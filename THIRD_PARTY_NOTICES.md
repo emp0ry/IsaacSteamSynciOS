@@ -30,3 +30,14 @@ the public reverse-engineering utility `IsaacSaveFileCrc`:
 Steam, Steam Cloud, Steam Guard, and Steam Mobile are trademarks of Valve
 Corporation. This project is independent and is not endorsed by Valve,
 Nicalis, or Apple.
+
+## Save-format research
+
+Thanks to [n1cknam3l3ss/IsaacSteamSynciOS](https://github.com/n1cknam3l3ss/IsaacSteamSynciOS)
+for identifying the Repentance+ progression layout differences. This project's
+adapter validates section boundaries and checksums, preserves the additional
+fields verbatim, and does not adopt automatic achievement/counter merging.
+
+The save-load trailer counter was independently checked against private native
+fixtures and the format notes in [REPENTOGON's SaveFile.h](https://github.com/TeamREPENTOGON/REPENTOGON/blob/main/repentogon/SaveSyncing/SaveFile.h).
+This is a format reference only; no REPENTOGON implementation code is bundled.

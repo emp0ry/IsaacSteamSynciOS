@@ -10,7 +10,7 @@ const MAX_SAVE_SIZE: usize = 32 * 1024 * 1024;
 const SECTION_COUNT: u32 = 11;
 const TRAILER_SIZE: usize = 8;
 // Native Isaac may rewrite the three persistent files sequentially for about
-// six seconds during cold startup. The UIKit startup gate is bounded at 25
+// six seconds during cold startup. The native startup gate is bounded at 8
 // seconds, so allow up to 12 seconds for a complete, structurally valid
 // observation before failing closed and continuing local play.
 const STABLE_READ_ATTEMPTS: usize = 120;
@@ -126,7 +126,7 @@ pub(crate) fn canonical_identity_for_path_once(path: &Path) -> Result<FileIdenti
     Ok(identity)
 }
 
-fn decode_raw_lz4(input: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn decode_raw_lz4(input: &[u8]) -> Result<Vec<u8>> {
     if input.is_empty() || input.len() > MAX_SAVE_SIZE {
         bail!("invalid iOS LZ4 save size");
     }
@@ -263,7 +263,7 @@ fn validate_canonical(bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn isaac_crc32(bytes: &[u8], start: u32) -> u32 {
+pub(crate) fn isaac_crc32(bytes: &[u8], start: u32) -> u32 {
     let mut crc = !start;
     for byte in bytes {
         let index = usize::from(*byte ^ crc as u8);

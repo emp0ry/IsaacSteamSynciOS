@@ -31,10 +31,9 @@ static BOOL ICSOperationIsBusy(void) {
 }
 
 static void ICSProtectActiveSyncInBackground(void) {
-    // Do not start a new upload merely because Isaac was backgrounded. The
-    // user explicitly starts phone -> Steam publication with Sync Now. If
-    // that operation is already running, request enough background time for
-    // its verified upload/commit to finish.
+    // Protect an already active manual/automatic operation. The core only
+    // accepts a new background upload if automatic upload is enabled and
+    // the native game was already back in its menu.
     if (!ICSOperationIsBusy()) return;
     UIApplication *application = UIApplication.sharedApplication;
     ICSEndBackgroundTask();
@@ -58,6 +57,7 @@ void ICSInstallLifecycleAdapter(void) {
             NSLog(@"[IsaacCloud] lifecycle: background");
             ICSCoreLog("lifecycle", "background");
             ICSCoreSetForeground(false);
+            ICSCoreSyncNow("background");
             ICSProtectActiveSyncInBackground();
         }];
         [center addObserverForName:UIApplicationWillEnterForegroundNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {

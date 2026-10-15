@@ -30,14 +30,19 @@ the optional rootless package to load it into Isaac.
 - SHA-256 local identity and Steam SHA-1 verification
 - Three-way synchronization using a last-known-common `BASE`
 - Automatic remote-only pull before Isaac opens progression
-- Explicit **Sync Now** publication for finished iPhone sessions
+- Lightweight automatic upload of stable saves after returning to Isaac's menu,
+  with **Sync Now** still available and automatic uploads configurable
+- Ordinary-Repentance Continue transfer as a verified progression/run pair,
+  tested from iOS to Windows and back
+- Optional PC Mods Compatibility for the saved run's mod-state marker;
+  custom Windows mod content is not ported
 - Additive Steam achievement sync from native Isaac persistent saves during
   **Sync Now**; existing Steam unlocks are never cleared
 - First-sync and true-conflict choices that never guess a winner
 - Versioned local and remote backups with retention and restore
 - Same-directory atomic local replacement with final hash verification
 - Native UIKit account, sync, conflict, backup, log, and invisible-button UI
-- Menu-only Steam Sync settings button and panel that hide automatically during a
+- Compact top-right **Steam ☁️** button and panel that hide automatically during a
   run and return after Isaac reaches a menu
 - Steam rich presence showing AppID `250900` while Isaac is active
 - Offline play without blocking game startup
@@ -47,10 +52,17 @@ the optional rootless package to load it into Isaac.
 At startup the core compares the canonical iPhone save, the Steam object, and
 the last verified common hash:
 
+Full SHA-256 and Steam SHA-1 still verify every transferred byte. The comparison
+hash excludes only the save-load counter and its dependent CRC; opening a save
+without changing progression must not create a conflict. The Continue stream
+and its link remain part of the comparison when Continue Transfer is enabled.
+Older BASE records are migrated only when an exact current snapshot or verified
+backup proves the old BASE; otherwise the first-sync choice is preserved.
+
 | iPhone | Steam | Result |
 | --- | --- | --- |
 | Same as BASE | Same as BASE | Nothing changed |
-| Changed | Same as BASE | Show iPhone progress waiting for **Sync Now** |
+| Changed | Same as BASE | Upload a stable snapshot from the menu, or wait for **Sync Now** if automatic upload is off |
 | Same as BASE | Changed | Pull Steam before slot selection |
 | Both changed to the same hash | Same content | Update BASE |
 | Both changed differently | Conflict; ask the user |
@@ -59,12 +71,35 @@ There is no winner on the first sync. The user must choose **Use iPhone Save**,
 **Use Steam Save**, or **Cancel**. Both available versions are backed up before
 any destructive choice.
 
-Automatic launch and foreground checks never upload. This prevents an old or
-partially written local file from silently replacing newer Steam progress.
-After finishing an iPhone run, open the cloud menu and tap **Sync Now**. The
-core waits for a stable save, converts it to the canonical Windows format,
-backs up Steam, uploads, re-enumerates Cloud, and advances BASE only after the
-remote SHA-1 matches.
+Launch and foreground checks compare first. A metadata-only observer checks
+known save paths every two seconds; it does not repeatedly hash unchanged files.
+After the files settle for at least four seconds and the native game is back in
+its menu, the background worker performs a fresh three-way comparison. Only a
+local-only change can upload automatically. First sync, divergence, and a remote
+replacement requiring a restart still need the appropriate user action.
+
+Use Isaac's **Save and Exit** before switching devices. A live in-memory room
+cannot be transferred until Isaac writes it to disk. **Sync Now** uses the same
+stable-save checks and also synchronizes missing save-derived achievements.
+The worker converts native LZ4 data to the Windows stream, backs up both sides,
+uploads, re-enumerates Cloud, and downloads the uploaded bytes for verification
+before advancing BASE. Limited iOS background time is not treated as a permanent
+daemon; interrupted or offline work is reconciled on the next launch/menu visit.
+
+The button border is green after a verified sync, orange while pending,
+connecting, or offline, and red for an error or choice that needs attention.
+
+### Steam save generation
+
+**Steam Save Version** supports Auto and ordinary Repentance. Auto preserves
+an existing exact cloud-file binding. If both generations exist without a prior
+binding, it refuses to pick by timestamp; choose Repentance explicitly.
+
+Repentance+ synchronization is **not enabled in v1.3.0**. Preliminary format
+adaptation exists in the source and has byte-round-trip tests, but full Steam
+and Windows acceptance testing is deferred. Repentance+ cloud files are refused
+rather than automatically converted. This release does not add Repentance+
+gameplay or content to iOS.
 
 ## Achievement synchronization
 
@@ -106,8 +141,37 @@ Documents/Repentance/rep_persistentgamedata2.dat
 Documents/Repentance/rep_persistentgamedata3.dat
 ```
 
-The core deliberately excludes `rep_gamestate*.dat` and `rep_rerunstate*.dat`.
-It synchronizes persistent progression, not a run currently in progress.
+**Continue Transfer** additionally pairs each ordinary Repentance progression
+file with its sibling `rep_gamestateN.dat`. Supported runs must use the
+`ISAACNG_GSR0146` stream. The run CRC and its checksum link in the progression
+file are both verified. Bundle hashes include both files, so a run-only change
+cannot be missed even when the progression bytes remain unchanged.
+
+Both files are uploaded in one UFS batch and read back individually. This is
+not a promise of remote transactional atomicity: a failed batch does not advance
+BASE, and the backed-up versions remain available. Local pair replacement uses
+a durable recovery journal; an incomplete replacement restores both old files
+before startup synchronization.
+
+Ordinary Repentance Continue has been tested in both directions through real
+Steam Cloud: iOS to Windows and a Windows-saved run back to native iOS. PC Lua
+mods were disabled for the initial acceptance tests. A separate slot-3 round
+trip with PC Lua mods enabled also passed using PC Mods Compatibility: the
+iOS-uploaded run loaded on Windows, was saved there, and loaded back on native
+iOS. This verifies the tested run, not compatibility with arbitrary mod content.
+Repentance+ saves and `rep_rerunstate*.dat` are not synced in this release.
+
+**PC Mods Compatibility** is a separate, opt-in experimental setting. It marks
+uploads for a PC with Lua mods enabled and adapts downloaded runs to the native
+iOS modding state. A bounded structural reader locates the marker through room
+and entity counts. Only that byte, the run CRC, its progression link, and the
+progression CRC change. Synchronization compares the normalized iOS pair, so
+this representation difference is not mistaken for progress or a conflict.
+
+The original pair is backed up first. Mod content is **not** ported: custom
+items, rooms, characters, or entities may still be missing or crash the game.
+Do not use this option as a promise of general Windows-mod compatibility.
+Keep PC Mods enabled while the setting is on. Unknown run layouts are refused.
 
 ## Installation
 
@@ -174,9 +238,14 @@ Library/Application Support/IsaacCloudSync/
 └── tmp/
 ```
 
-At least 12 backups per slot and source are retained. A manifest records the
+At least 12 backups per slot, source, and filename are retained. A manifest records the
 operation ID, source, timestamp, filename, size, SHA-256, and Steam SHA-1 when
 available.
+
+Restoring a run requires its matching progression backup from the same
+operation. Restoring progression without a matching run backs up and clears
+Continue rather than mixing snapshots. Restore also clears that slot's BASE,
+so it cannot silently publish the restored version over Steam.
 
 Downloads never overwrite a live save directly. The core verifies the download,
 backs up the existing file, writes a unique same-directory temporary file,
@@ -235,6 +304,13 @@ conflict, save parsing, additive stat-bit update, and achievement-preservation
 branches are covered by Rust tests. Public binaries are also checked for
 jailbreak-only and Game Center dynamic dependencies.
 
+The current update additionally verified ordinary Repentance Continue in both
+directions with PC Mods on and off, and a queued pull applied before native
+game-view startup. A private regression reproduces the real false conflict:
+an unchanged iOS run plus a load-counter-only rewrite correctly allows a
+remote-only Steam update. Repentance+ format adaptation was byte-round-trip
+tested, but Repentance+ synchronization remains disabled in this release.
+
 ## Signing and DLC limitations
 
 Re-signing an App Store application can change its application identifier,
@@ -249,8 +325,16 @@ project does not bypass that limitation.
 ## Known limitations
 
 - iOS does not guarantee permanent background execution. A bounded background
-  task can finish a manual sync already in progress; otherwise retry on the
-  next foreground.
+  task protects an active manual/automatic sync or a menu-safe background
+  upload; otherwise retry on the next foreground or menu visit.
+- The startup replacement boundary waits at most eight seconds for background
+  network work. On timeout, the game continues locally and late replacement is
+  disabled; a later remote pull may require a relaunch.
+  The constructor captures save identities without blocking dyld. On the
+  verified native build, the wait occurs at `AAPLAppDelegate` initialization,
+  before the game view is created, using an ordinary Objective-C method override.
+  Unknown startup boundaries disable automatic pre-load replacement rather than
+  guessing. No executable code patching or jailbreak hook runtime is required.
 - A pull or restore chosen after gameplay starts is queued for the next launch
   so progression is never replaced underneath the running game.
 - Normal Apple development/distribution signing and receipt-dependent DLC

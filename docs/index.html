@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
     <meta name="theme-color" content="#120b24">
-    <meta name="description" content="Native Steam Cloud and additive achievement synchronization for The Binding of Isaac: Repentance on iOS. Direct Steam login, explicit save publication, conflict choices, and verified backups.">
+    <meta name="description" content="Native Steam Cloud and additive achievement synchronization for The Binding of Isaac: Repentance on iOS. Automatic menu sync, saved Continue transfer, conflict choices, and verified backups.">
     <meta name="author" content="emp0ry">
     <meta name="application-name" content="Isaac Steam Sync">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -19,11 +19,11 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Isaac Steam Sync">
     <meta property="og:title" content="Isaac Steam Sync | Steam Cloud and Achievements on iOS">
-    <meta property="og:description" content="Native Steam Cloud and additive achievement synchronization for The Binding of Isaac: Repentance on iOS. Direct Steam login, explicit save publication, conflict choices, and verified backups.">
+    <meta property="og:description" content="Native Steam Cloud and additive achievement synchronization for The Binding of Isaac: Repentance on iOS. Automatic menu sync, saved Continue transfer, conflict choices, and verified backups.">
     <meta property="og:url" content="https://isaacsteamios.emp0ry.com/">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Isaac Steam Sync | Steam Cloud and Achievements on iOS">
-    <meta name="twitter:description" content="Native Steam Cloud and additive achievement synchronization for The Binding of Isaac: Repentance on iOS. Direct Steam login, explicit save publication, conflict choices, and verified backups.">
+    <meta name="twitter:description" content="Native Steam Cloud and additive achievement synchronization for The Binding of Isaac: Repentance on iOS. Automatic menu sync, saved Continue transfer, conflict choices, and verified backups.">
     <link rel="stylesheet" href="styles.css">
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Isaac Steam Sync","description":"Native Steam Cloud and additive achievement synchronization for The Binding of Isaac: Repentance on iOS. Direct Steam login, explicit save publication, conflict choices, and verified backups.","operatingSystem":"iOS","applicationCategory":"UtilitiesApplication","url":"https://isaacsteamios.emp0ry.com/","codeRepository":"https://github.com/emp0ry/IsaacSteamSynciOS","downloadUrl":"https://github.com/emp0ry/IsaacSteamSynciOS/releases/latest","author":{"@type":"Person","name":"emp0ry","url":"https://github.com/emp0ry"},"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://github.com/emp0ry/IsaacSteamSynciOS/blob/main/LICENSE"}</script>
     <script defer src="script.js"></script>
@@ -55,7 +55,7 @@
           <div class="hero-copy is-centered reveal">
             <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>Repentance on iOS · Steam Cloud · Achievement sync</div>
             <h1>Your progress.<br>Across platforms.</h1>
-            <p class="hero-text">Connect Isaac on iPhone or iPad directly to Steam. Bring your Steam progression to iOS, publish a finished iPhone session with Sync Now, and add missing Steam achievements from your native saves.</p>
+            <p class="hero-text">Connect Isaac on iPhone or iPad directly to Steam. Transfer ordinary Repentance progression and saved Continue runs between iOS and Windows. Upload stable saves automatically from the menu, and use Sync Now to add missing Steam achievements.</p>
             <div class="hero-actions">
               <a class="button button-primary" href="#downloads">Download Latest</a>
               <a class="button button-secondary" href="https://github.com/emp0ry/IsaacSteamSynciOS" target="_blank" rel="noreferrer">View Source</a>
@@ -63,7 +63,7 @@
             </div>
             <div class="hero-metrics">
               <div class="metric-card"><strong>Direct to Steam</strong><span>QR/Steam Mobile or credential login with Steam Guard</span></div>
-              <div class="metric-card"><strong>You choose</strong><span>Manual uploads and explicit first-sync or conflict choices</span></div>
+              <div class="metric-card"><strong>Automatic menu sync</strong><span>Stable-save uploads; you choose on first sync or conflict</span></div>
               <div class="metric-card"><strong>Unlocks preserved</strong><span>Achievement updates only add missing Steam unlocks</span></div>
             </div>
           </div>
@@ -118,7 +118,7 @@
             <article class="feature-card reveal reveal-delay-sm">
               <div class="feature-icon icon-sun" aria-hidden="true"></div>
               <h3>Steam Cloud progression</h3>
-              <p>Synchronize Repentance’s three persistent save slots with AppID 250900, including native iOS-to-Windows save normalization.</p>
+              <p>Synchronize Repentance’s three progression slots and saved Continue runs with AppID 250900, including native iOS-to-Windows normalization and pair verification.</p>
             </article>
             <article class="feature-card reveal reveal-delay-md">
               <div class="feature-icon icon-grid" aria-hidden="true"></div>
@@ -127,8 +127,8 @@
             </article>
             <article class="feature-card reveal">
               <div class="feature-icon icon-play" aria-hidden="true"></div>
-              <h3>Controlled publication</h3>
-              <p>Remote-only changes can be pulled before slot selection. Finish an iPhone session and tap <strong>Sync Now</strong> to publish stable local progress.</p>
+              <h3>Automatic menu sync</h3>
+              <p>Remote-only changes can be pulled before slot selection. Use <strong>Save and Exit</strong>, then wait for a green Steam button: stable local-only changes upload automatically.</p>
             </article>
             <article class="feature-card reveal reveal-delay-sm">
               <div class="feature-icon icon-wave" aria-hidden="true"></div>
@@ -162,7 +162,7 @@
             </div>
             <div class="status-list">
               <div class="status-row"><span class="status-dot" aria-hidden="true"></span><strong>Only Steam changed</strong><span>Pull before play</span></div>
-              <div class="status-row"><span class="status-dot" aria-hidden="true"></span><strong>Only iPhone changed</strong><span>Tap Sync Now</span></div>
+              <div class="status-row"><span class="status-dot" aria-hidden="true"></span><strong>Only iPhone changed</strong><span>Auto-upload from menu</span></div>
               <div class="status-row"><span class="status-dot" aria-hidden="true"></span><strong>Both changed differently</strong><span>You choose</span></div>
             </div>
           </div>
@@ -173,18 +173,18 @@
           <div class="section-head reveal">
             <span class="section-kicker">Usage</span>
             <h2>Bring Steam progress in. Send iPhone progress back.</h2>
-            <p>Automatic launch and foreground checks never upload. Manual Sync Now publishes a finished iPhone session after the save becomes stable.</p>
+            <p>Startup checks apply safe remote-only updates before the game loads progression. Automatic uploads wait for stable files and the game menu; Sync Now remains available for manual sync and achievements.</p>
             <div class="hero-actions"><a class="button button-secondary button-accent" href="https://github.com/emp0ry/IsaacSteamSynciOS/blob/main/README.md#installation" target="_blank" rel="noreferrer">Read installation guide</a></div>
           </div>
           <div class="steps-card reveal reveal-delay">
             <article class="step-row">
-              <span class="step-index">01</span><div><h3>Connect your Steam account</h3><p>Open Steam Sync from Isaac’s menu and sign in. The settings button and panel hide automatically during a run.</p></div>
+              <span class="step-index">01</span><div><h3>Connect your Steam account</h3><p>Open the top-right Steam button from Isaac’s menu and sign in. The button and panel hide automatically during a run.</p></div>
             </article>
             <article class="step-row">
               <span class="step-index">02</span><div><h3>Choose the first save</h3><p>Select <strong>Use iPhone Save</strong>, <strong>Use Steam Save</strong>, or <strong>Cancel</strong> on first sync. Both available versions are backed up before a replacement.</p></div>
             </article>
             <article class="step-row">
-              <span class="step-index">03</span><div><h3>Sync after playing</h3><p>Return to the menu and tap <strong>Sync Now</strong>. The core verifies the upload, then adds eligible missing Steam achievements.</p></div>
+              <span class="step-index">03</span><div><h3>Sync after playing</h3><p>Use <strong>Save and Exit</strong> and wait for the Steam button to turn green. Tap <strong>Sync Now</strong> when you also want to add missing save-derived Steam achievements.</p></div>
             </article>
           </div>
         </div>
@@ -194,12 +194,12 @@
           <div class="responsibility-shell reveal">
             <div class="section-head">
               <span class="section-kicker">Requirements & credits</span>
-              <h2>Persistent progression, with verified backups.</h2>
-              <p>The current release was tested with native Isaac App Store version 1.4 and Repentance. Synchronization covers progression rather than a run currently in progress.</p>
+              <h2>Progression and saved runs, with verified backups.</h2>
+              <p>Tested with native Isaac App Store version 1.4 and ordinary Windows Repentance in both directions. Live in-memory runs must be saved first. Repentance+ synchronization is not enabled in this release.</p>
             </div>
             <div class="legal-grid">
               <article class="legal-card"><h3>iOS 15 or newer</h3><p>ARM64 iPhone or iPad with <code>com.Nicalis.Isaac-iOS</code>. Rootless and embedded installations share the same core.</p></article>
-              <article class="legal-card"><h3>Repentance saves</h3><p>The three <code>rep_persistentgamedata</code> slots map to Steam AppID 250900. Active-run and rerun state files are excluded.</p></article>
+              <article class="legal-card"><h3>Repentance saves</h3><p>Each <code>rep_persistentgamedata</code> slot can travel with its <code>rep_gamestate</code> Continue snapshot. Rerun states are excluded. PC Mods Compatibility adapts the run marker, not custom mod content.</p></article>
               <article class="legal-card"><h3>Account and network</h3><p>Steam authentication and cloud operations connect directly to Valve. Offline play does not block game startup.</p></article>
               <article class="legal-card"><h3>App signing</h3><p>Back up application data before re-signing. The signing workflow can affect containers, Keychain access, receipts, and purchased DLC access.</p></article>
             </div>

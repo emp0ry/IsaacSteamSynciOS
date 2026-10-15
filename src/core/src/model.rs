@@ -22,6 +22,10 @@ pub struct FileSyncState {
     pub last_local: FileIdentity,
     pub last_remote: FileIdentity,
     pub last_successful_sync_unix_ms: u64,
+    #[serde(default)]
+    pub base_bundle_sha256: Option<String>,
+    #[serde(default)]
+    pub base_sync_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -30,6 +34,8 @@ pub struct PendingRemotePull {
     pub remote_name: String,
     pub expected_steam_sha1: Option<String>,
     pub requested_unix_ms: u64,
+    #[serde(default)]
+    pub expected_run_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -38,6 +44,10 @@ pub struct PendingLocalRestore {
     pub slot: u8,
     pub expected_sha256: String,
     pub requested_unix_ms: u64,
+    #[serde(default)]
+    pub run_backup_id: Option<String>,
+    #[serde(default)]
+    pub expected_run_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +62,8 @@ pub struct SyncState {
     pub pending_remote_pulls: BTreeMap<u8, PendingRemotePull>,
     #[serde(default)]
     pub pending_local_restore: Option<PendingLocalRestore>,
+    #[serde(default)]
+    pub compatibility: crate::save_compat::CompatibilityState,
 }
 
 impl Default for SyncState {
@@ -65,6 +77,7 @@ impl Default for SyncState {
             files: BTreeMap::new(),
             pending_remote_pulls: BTreeMap::new(),
             pending_local_restore: None,
+            compatibility: Default::default(),
         }
     }
 }

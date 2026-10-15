@@ -382,6 +382,7 @@ static void PublishObservation(bool gameplayActive) {
         if (gMenuObservations < kMenuDebounceObservations) return;
     }
     int previous = gGameState.exchange(nextState);
+    ICSCoreSetMenuReady(!gameplayActive);
     if (previous == nextState) return;
     ICSCoreLog("ui", gameplayActive
         ? "gameplay detected; Steam Sync settings hidden"
@@ -419,6 +420,17 @@ static void RefreshGameState(void) {
 
 extern "C" bool ICSGameMenuIsActive(void) {
     return gGameState.load() == 0;
+}
+
+extern "C" bool ICSGameOwnsImage(const char *imageName) {
+    const mach_header_64 *header = IsaacHeader(nullptr);
+    if (imageName == nullptr || header == nullptr) return false;
+    for (uint32_t index = 0; index < _dyld_image_count(); ++index) {
+        if (_dyld_get_image_header(index) != reinterpret_cast<const mach_header *>(header)) continue;
+        const char *name = _dyld_get_image_name(index);
+        return name != nullptr && strcmp(name, imageName) == 0;
+    }
+    return false;
 }
 
 extern "C" void ICSInstallGameStateDetector(void) {

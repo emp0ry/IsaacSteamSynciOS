@@ -75,7 +75,7 @@ impl BackupManager {
         };
         let manifest = directory.join(format!("{backup_id}.json"));
         atomic::write_bytes(&manifest, &serde_json::to_vec_pretty(&record)?)?;
-        self.apply_retention(slot, &record.source)?;
+        self.apply_retention(slot, &record.source, &record.filename)?;
         Ok(record)
     }
 
@@ -137,11 +137,13 @@ impl BackupManager {
         Ok(data_path)
     }
 
-    fn apply_retention(&self, slot: u8, source: &BackupSource) -> Result<()> {
+    fn apply_retention(&self, slot: u8, source: &BackupSource, filename: &str) -> Result<()> {
         let mut matching: Vec<_> = self
             .list()?
             .into_iter()
-            .filter(|record| record.slot == slot && &record.source == source)
+            .filter(|record| {
+                record.slot == slot && &record.source == source && record.filename == filename
+            })
             .collect();
         matching.sort_by_key(|record| std::cmp::Reverse(record.created_unix_ms));
         for record in matching.into_iter().skip(RETAIN_PER_SLOT_AND_SOURCE) {

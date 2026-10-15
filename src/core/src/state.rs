@@ -77,6 +77,8 @@ mod tests {
                 last_local: identity.clone(),
                 last_remote: identity,
                 last_successful_sync_unix_ms: 1,
+                base_bundle_sha256: None,
+                base_sync_sha256: None,
             },
         );
         let old = SyncState {
@@ -88,6 +90,7 @@ mod tests {
             files,
             pending_remote_pulls: BTreeMap::new(),
             pending_local_restore: None,
+            compatibility: Default::default(),
         };
         fs::write(
             root.join("state/sync-state.json"),

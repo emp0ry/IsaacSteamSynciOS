@@ -8,10 +8,16 @@ mod keychain;
 mod local;
 mod logging;
 mod model;
+mod run_compat;
+mod run_state;
 mod save_achievements;
+mod save_compat;
+mod save_monitor;
+mod slot_transaction;
 mod state;
 mod steam;
 mod sync_engine;
+mod sync_identity;
 
 pub use model::{FileIdentity, STEAM_APP_ID};
 pub use sync_engine::{SyncDecision, decide};

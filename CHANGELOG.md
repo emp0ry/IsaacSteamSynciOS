@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.3.0 - 2026-10-15
+
+- Add explicit ordinary-Repentance cloud selection without timestamp guessing.
+  Preliminary Repentance+ format adaptation remains disabled pending further testing.
+- Add stable-save monitoring and automatic local-only uploads from Isaac's menu.
+- Replace the circular cloud control with a compact top-right menu-only Steam button and
+  synchronized/pending/attention border colors.
+- Keep all three slots selectable for Force Push/Pull even before a successful
+  comparison; report a busy operation instead of silently ignoring the tap.
+- Exclude the verified save-load counter from the three-way comparison, without
+  changing uploaded bytes or weakening full-file hash/CRC verification. Restore
+  old comparison BASEs only from exact matching snapshots or verified backups.
+- Add ordinary-Repentance progression/Continue bundle hashing, same-slot UFS
+  batches, read-back verification, and recoverable local replacement.
+- Verify Continue's CRC and progression checksum link; refuse mismatched pairs.
+- Back up and restore matching progression/run pairs without inventing a BASE.
+- Confirm ordinary Repentance Continue loading through Steam Cloud in both
+  directions with PC Lua mods disabled.
+- Add opt-in PC mod-state adaptation with a bounded structural parser and
+  checksum relinking. This does not port custom mod content.
+- Confirm a separate ordinary Repentance round trip with PC Lua mods enabled:
+  iOS upload, Windows Continue and Save and Exit, then native iOS Continue.
+- Capture save identities during construction and hold at native app-delegate
+  initialization, before game-view initialization. Do not wait under dyld's
+  image-initialization lock; keep one bounded deadline and refuse late replacement.
+- Repentance+ runs and rerun snapshots are not supported.
+
 ## 1.2.0 - 2026-08-20
 
 - Renamed the project and release artifacts to IsaacSteamSynciOS to reflect

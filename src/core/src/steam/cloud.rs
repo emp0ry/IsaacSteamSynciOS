@@ -1,6 +1,7 @@
 use crate::{
-    local::{slot_for_filename, unix_ms},
+    local::unix_ms,
     model::{FileIdentity, RemoteSave, STEAM_APP_ID},
+    save_compat::CloudVersion,
     steam::{
         cm::SteamSession,
         proto::{
@@ -77,7 +78,10 @@ impl SteamCloud {
             let Some(basename) = request_name.rsplit(['/', '\\']).next() else {
                 continue;
             };
-            let Some(slot) = slot_for_filename(basename) else {
+            let Some(slot) = CloudVersion::from_filename(basename)
+                .map(|(_, slot)| slot)
+                .or_else(|| crate::run_state::slot_for_filename(basename))
+            else {
                 continue;
             };
             let sha = file.sha_file.as_ref().map(hex::encode);
@@ -100,14 +104,6 @@ impl SteamCloud {
             });
         }
         saves.sort_by_key(|file| file.save.slot);
-        for pair in saves.windows(2) {
-            if pair[0].save.slot == pair[1].save.slot {
-                bail!(
-                    "Steam contains multiple candidate files for save slot {}",
-                    pair[0].save.slot
-                );
-            }
-        }
         Ok((response.current_change_number.unwrap_or(0), saves))
     }
 
@@ -197,17 +193,57 @@ impl SteamCloud {
         remote_name: &str,
         bytes: &[u8],
     ) -> Result<CloudFile> {
-        if bytes.len() > MAX_SAVE_TRANSFER_SIZE {
-            bail!("local save exceeds the transfer safety limit");
+        self.upload_many_verified(session, &[(remote_name.to_owned(), bytes.to_vec())])
+            .await?
+            .into_iter()
+            .next()
+            .context("verified Steam upload missing")
+    }
+
+    /// One UFS batch for progression + Continue, with read-back verification of
+    /// every file. A failed/incomplete batch never advances the caller's BASE.
+    pub async fn upload_many_verified(
+        &self,
+        session: &SteamSession,
+        uploads: &[(String, Vec<u8>)],
+    ) -> Result<Vec<CloudFile>> {
+        validate_upload_manifest(uploads)?;
+        // Steam can reject an identical ClientBeginFileUpload with
+        // DuplicateRequest. Verify existing bytes and transfer only changed
+        // members, while still verifying the complete desired pair below.
+        let (_, existing) = self.list_isaac_saves(session).await?;
+        let mut changed = Vec::new();
+        let mut unchanged = Vec::new();
+        for (name, bytes) in uploads {
+            let matches: Vec<_> = existing
+                .iter()
+                .filter(|file| file.request_name == *name)
+                .collect();
+            if matches.len() > 1 {
+                bail!("ambiguous Steam upload destination");
+            }
+            let expected = hex::encode(Sha1::digest(bytes));
+            if let Some(file) = matches.first()
+                && file.save.identity.steam_sha1.as_deref() == Some(expected.as_str())
+            {
+                if self.download(session, file).await? != *bytes {
+                    bail!("unchanged Steam file failed byte verification");
+                }
+                unchanged.push((*file).clone());
+            } else {
+                changed.push((name, bytes));
+            }
         }
-        let sha = Sha1::digest(bytes).to_vec();
+        if changed.is_empty() {
+            return Ok(unchanged);
+        }
         let batch: CCloudBeginAppUploadBatchResponse = call(
             session,
             "Cloud.BeginAppUploadBatch#1",
             &CCloudBeginAppUploadBatchRequest {
                 appid: Some(STEAM_APP_ID),
                 machine_name: Some("IsaacCloudSync iPhone".to_owned()),
-                files_to_upload: vec![remote_name.to_owned()],
+                files_to_upload: changed.iter().map(|(name, _)| (*name).clone()).collect(),
                 files_to_delete: vec![],
                 client_id: Some(random_client_id()),
                 app_build_id: Some(0),
@@ -216,9 +252,14 @@ impl SteamCloud {
         .await?;
         let batch_id = batch.batch_id.context("Steam upload batch ID missing")?;
 
-        let transfer = self
-            .upload_in_batch(session, batch_id, remote_name, bytes, &sha)
-            .await;
+        let transfer = async {
+            for (name, bytes) in &changed {
+                self.upload_in_batch(session, batch_id, name, bytes, &Sha1::digest(bytes))
+                    .await?;
+            }
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
         let complete_result: Result<CCloudCompleteAppUploadBatchResponse> = call(
             session,
             "Cloud.CompleteAppUploadBatchBlocking#1",
@@ -237,14 +278,22 @@ impl SteamCloud {
         transfer?;
 
         let (_, files) = self.list_isaac_saves(session).await?;
-        let expected_hex = hex::encode(&sha);
-        files
-            .into_iter()
-            .find(|file| {
-                file.request_name == remote_name
-                    && file.save.identity.steam_sha1.as_deref() == Some(expected_hex.as_str())
-            })
-            .context("uploaded Steam file was not verifiable in cloud changelist")
+        let mut verified = Vec::new();
+        for (name, bytes) in uploads {
+            let expected_hex = hex::encode(Sha1::digest(bytes));
+            let file = files
+                .iter()
+                .find(|file| {
+                    file.request_name == *name
+                        && file.save.identity.steam_sha1.as_deref() == Some(expected_hex.as_str())
+                })
+                .context("uploaded Steam batch file was not verifiable in cloud changelist")?;
+            if self.download(session, file).await? != *bytes {
+                bail!("uploaded Steam bytes failed read-back verification");
+            }
+            verified.push(file.clone());
+        }
+        Ok(verified)
     }
 
     async fn upload_in_batch(
@@ -344,6 +393,101 @@ impl SteamCloud {
     }
 }
 
+fn validate_upload_manifest(uploads: &[(String, Vec<u8>)]) -> Result<()> {
+    if uploads.is_empty() || uploads.len() > 2 {
+        bail!("invalid Isaac slot upload batch");
+    }
+    let mut progress = None;
+    let mut run = None;
+    for (name, bytes) in uploads {
+        if name.len() > 2048 || bytes.len() > MAX_SAVE_TRANSFER_SIZE {
+            bail!("Isaac upload exceeds safety limits");
+        }
+        let basename = name.rsplit(['/', '\\']).next().unwrap_or("");
+        if let Some((version, slot)) = CloudVersion::from_filename(basename) {
+            if progress.is_some() {
+                bail!("an upload batch must contain only one progression file");
+            }
+            let projected = crate::save_compat::project_for_ios(bytes)?;
+            if projected.version != version
+                || crate::isaac_format::canonicalize_save(bytes)?.bytes != *bytes
+            {
+                bail!("Steam requires a canonical progression stream of the selected generation");
+            }
+            progress = Some((name, bytes, version, slot));
+        } else if crate::run_state::slot_for_filename(basename).is_some() {
+            if run.is_some() || crate::run_state::canonicalize(bytes)? != *bytes {
+                bail!("invalid or compressed Steam Continue upload");
+            }
+            run = Some((name, bytes));
+        } else {
+            bail!("unsupported Isaac upload file");
+        }
+    }
+    let (name, bytes, version, slot) = progress.context("Continue cannot be uploaded alone")?;
+    if let Some((run_name, run_bytes)) = run {
+        if version != CloudVersion::Repentance
+            || crate::run_state::remote_name(name, slot)? != *run_name
+        {
+            bail!("progression and Continue must target the same Repentance slot and cloud path");
+        }
+        crate::run_state::validate_pair(bytes, run_bytes)?;
+    }
+    Ok(())
+}
+
+/// Resolve a generation without timestamp guessing. A previous exact binding
+/// stays pinned in Auto; otherwise coexistence requires an explicit choice.
+pub fn select_persistent_saves(
+    files: &[CloudFile],
+    state: &crate::model::SyncState,
+) -> Result<Vec<CloudFile>> {
+    if state.compatibility.version == CloudVersion::RepentancePlus {
+        bail!(
+            "Repentance+ synchronization is not enabled in this release; use ordinary Repentance"
+        );
+    }
+    let mut selected = Vec::new();
+    for slot in 1..=3 {
+        let mut candidates: Vec<_> = files
+            .iter()
+            .filter(|file| {
+                file.save.slot == slot && CloudVersion::from_filename(&file.save.filename).is_some()
+            })
+            .collect();
+        if state.compatibility.version == CloudVersion::Auto {
+            if let Some(bound) = state.files.values().find(|entry| entry.slot == slot)
+                && candidates
+                    .iter()
+                    .any(|file| file.request_name == bound.remote_name)
+            {
+                candidates.retain(|file| file.request_name == bound.remote_name);
+            }
+        } else {
+            candidates.retain(|file| {
+                CloudVersion::from_filename(&file.save.filename)
+                    .is_some_and(|(version, _)| version == state.compatibility.version)
+            });
+        }
+        if candidates.len() > 1 {
+            bail!(
+                "Steam slot {slot} has multiple save versions/paths; choose ordinary Repentance in Steam Save Version settings (no file was overwritten)"
+            );
+        }
+        if let Some(file) = candidates.first() {
+            if CloudVersion::from_filename(&file.save.filename)
+                .is_some_and(|(version, _)| version == CloudVersion::RepentancePlus)
+            {
+                bail!(
+                    "Steam slot {slot} uses Repentance+; synchronization for that version is not enabled in this release"
+                );
+            }
+            selected.push((*file).clone());
+        }
+    }
+    Ok(selected)
+}
+
 async fn call<Req, Resp>(session: &SteamSession, target: &str, request: &Req) -> Result<Resp>
 where
     Req: Message,
@@ -413,6 +557,77 @@ fn random_client_id() -> u64 {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    fn file(name: &str) -> CloudFile {
+        let (_, slot) = CloudVersion::from_filename(name).unwrap();
+        CloudFile {
+            save: RemoteSave {
+                slot,
+                filename: name.to_owned(),
+                path_prefix: String::new(),
+                identity: crate::local::identity_for_bytes(b"data"),
+            },
+            raw: Default::default(),
+            request_name: name.to_owned(),
+        }
+    }
+    #[test]
+    fn auto_never_picks_a_generation_by_timestamp() {
+        let files = vec![
+            file("rep_persistentgamedata1.dat"),
+            file("rep+persistentgamedata1.dat"),
+        ];
+        let mut state = crate::model::SyncState::default();
+        assert!(select_persistent_saves(&files, &state).is_err());
+        state.compatibility.version = CloudVersion::RepentancePlus;
+        assert!(select_persistent_saves(&files, &state).is_err());
+        state.compatibility.version = CloudVersion::Repentance;
+        assert_eq!(
+            select_persistent_saves(&files, &state).unwrap()[0].request_name,
+            "rep_persistentgamedata1.dat"
+        );
+        let duplicates = vec![
+            file("rep_persistentgamedata1.dat"),
+            file("rep_persistentgamedata1.dat"),
+        ];
+        state.compatibility.version = CloudVersion::Repentance;
+        assert!(select_persistent_saves(&duplicates, &state).is_err());
+    }
+
+    #[test]
+    fn upload_manifest_cannot_cross_slots_generations_or_paths() {
+        let progress = crate::save_compat::tests::fixture(CloudVersion::Repentance);
+        let item = || ("rep_persistentgamedata3.dat".to_owned(), progress.clone());
+        assert!(validate_upload_manifest(&[item()]).is_ok());
+        assert!(validate_upload_manifest(&[item(), item()]).is_err());
+        assert!(validate_upload_manifest(&[("rep_gamestate3.dat".into(), vec![])]).is_err());
+        assert!(validate_upload_manifest(&[item(), ("rep_gamestate3.dat".into(), vec![])]).is_ok());
+        assert!(
+            validate_upload_manifest(&[item(), ("rep_gamestate1.dat".into(), vec![])]).is_err()
+        );
+        assert!(
+            validate_upload_manifest(&[item(), ("other/rep_gamestate3.dat".into(), vec![])])
+                .is_err()
+        );
+        assert!(
+            validate_upload_manifest(&[("rep+persistentgamedata3.dat".into(), progress)]).is_err()
+        );
+        let plus = crate::save_compat::tests::fixture(CloudVersion::RepentancePlus);
+        assert!(
+            validate_upload_manifest(&[
+                ("rep+persistentgamedata3.dat".into(), plus),
+                ("rep_gamestate3.dat".into(), vec![])
+            ])
+            .is_err()
+        );
+        assert!(validate_upload_manifest(&[("achievements.dat".into(), vec![])]).is_err());
+    }
+
+    #[test]
+    fn repentance_plus_is_not_automatically_enabled_in_this_release() {
+        let files = vec![file("rep+persistentgamedata1.dat")];
+        assert!(select_persistent_saves(&files, &crate::model::SyncState::default()).is_err());
+    }
 
     #[test]
     fn cloud_name_preserves_steam_prefix() {

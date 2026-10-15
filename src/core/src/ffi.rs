@@ -8,6 +8,38 @@ use std::{
 
 static ENGINE: OnceLock<Arc<Engine>> = OnceLock::new();
 
+#[unsafe(no_mangle)]
+pub extern "C" fn ICSCoreSetPCMods(enabled: bool) -> bool {
+    engine().is_some_and(|engine| engine.set_pc_mods(enabled))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn ICSCoreSetMenuReady(ready: bool) {
+    if let Some(engine) = engine() {
+        engine.set_menu_ready(ready);
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn ICSCoreSetRunTransfer(enabled: bool) -> bool {
+    engine().is_some_and(|engine| engine.set_run_transfer(enabled))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn ICSCoreSetCloudVersion(version: u8) -> bool {
+    let selected = match version {
+        0 => crate::save_compat::CloudVersion::Auto,
+        1 => crate::save_compat::CloudVersion::Repentance,
+        // Repentance+ remains deferred until cross-platform acceptance tests.
+        _ => return false,
+    };
+    engine().is_some_and(|engine| engine.set_cloud_version(selected))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn ICSCoreSetAutoUpload(enabled: bool) -> bool {
+    engine().is_some_and(|engine| engine.set_auto_upload(enabled))
+}
+
 fn engine() -> Option<&'static Arc<Engine>> {
     ENGINE.get()
 }
@@ -191,16 +223,9 @@ pub extern "C" fn ICSCorePreflight(timeout_ms: u64) -> bool {
     let Some(engine) = engine() else {
         return false;
     };
-    let completed = engine.preflight(timeout_ms);
-    if is_transient_cm_close(engine) {
-        engine.record_host_event(
-            "transport",
-            "Steam CM closed during preflight; reconnecting and retrying once",
-        );
-        std::thread::sleep(Duration::from_millis(150));
-        return engine.preflight(timeout_ms);
-    }
-    completed
+    // One deadline for the startup boundary. Reconnect retries happen later
+    // through the foreground/menu worker, not by doubling the launch delay.
+    engine.preflight(timeout_ms)
 }
 
 #[unsafe(no_mangle)]

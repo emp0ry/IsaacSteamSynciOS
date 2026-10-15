@@ -7,6 +7,26 @@ static BOOL ICSQRPresentationScheduled = NO;
 static BOOL ICSQRDismissedByUser = NO;
 static __weak UINavigationController *ICSActivePanelNavigation;
 
+@interface ICSMenuButton : UIButton
+@end
+@implementation ICSMenuButton
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    (void)event;
+    return !self.hidden && self.alpha > 0.01 && CGRectContainsPoint(CGRectInset(self.bounds,-6,-6),point);
+}
+@end
+
+static void ICSLayoutMenuButton(UIButton *button, UIWindow *window) {
+    if (button == nil || window == nil) return;
+    CGFloat width=94, height=32;
+    // Match EID's visual edge inset rather than the landscape notch inset.
+    CGFloat right=12;
+    CGFloat top=MAX(14,window.safeAreaInsets.top + 8);
+    CGRect frame=CGRectMake(CGRectGetWidth(window.bounds)-right-width,
+        top,width,height);
+    button.frame=frame;
+}
+
 @interface ICSQRCodeViewController : UIViewController
 @property(nonatomic) UIImageView *codeImageView;
 @property(nonatomic) NSString *challengeURL;
@@ -223,7 +243,7 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         case 2: return 3;
         case 3: return [self.status[@"pending_choices"] count];
         case 4: return MIN((NSUInteger)20, self.backups.count);
-        case 5: return 2;
+        case 5: return 6;
         default: return 0;
     }
 }
@@ -235,7 +255,7 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         case 2: return @"Save Identities";
         case 3: return @"Conflicts / First Sync";
         case 4: return @"Verified Backups";
-        case 5: return @"Interface & Diagnostics";
+        case 5: return @"Sync Settings & Diagnostics";
         default: return nil;
     }
 }
@@ -310,8 +330,19 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         return cell;
     }
 
-    cell.textLabel.text = indexPath.row == 0 ? @"Export Structured Log"
-        : (ICSButtonIsInvisible() ? @"Menu Button: Invisible (tap area remains)" : @"Menu Button: Visible");
+    if (indexPath.row == 0) cell.textLabel.text = @"Export Structured Log";
+    else if (indexPath.row == 1) cell.textLabel.text = ICSButtonIsInvisible() ? @"Menu Button: Invisible (tap area remains)" : @"Menu Button: Visible";
+    else if (indexPath.row == 2) {
+        NSString *version = self.status[@"cloud_version"];
+        NSString *name = [version isEqualToString:@"repentance_plus"] ? @"Repentance+"
+            : ([version isEqualToString:@"repentance"] ? @"Repentance" : @"Auto (existing binding)");
+        cell.textLabel.text = [@"Steam Save Version: " stringByAppendingString:name];
+    } else if (indexPath.row == 3) cell.textLabel.text = [self.status[@"auto_upload"] boolValue]
+        ? @"Automatic Upload: On" : @"Automatic Upload: Off (Sync Now)";
+    else if (indexPath.row == 4) cell.textLabel.text = [self.status[@"transfer_runs"] boolValue]
+        ? @"Continue Transfer: On (Repentance only)" : @"Continue Transfer: Off";
+    else cell.textLabel.text = [self.status[@"pc_mods"] boolValue]
+        ? @"PC Mods Compatibility: On (experimental)" : @"PC Mods Compatibility: Off";
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     return cell;
 }
@@ -346,7 +377,7 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         [self resolveChoice:self.status[@"pending_choices"][indexPath.row]];
     } else if (indexPath.section == 4) {
         NSDictionary *backup = self.backups[indexPath.row];
-        [self confirm:@"Restore this backup?" message:@"The backup will be verified now, then restored before game initialization on your next launch. The current local save is backed up before replacement." destructive:YES action:^{
+        [self confirm:@"Restore this backup?" message:@"The verified progression and matching Continue backup are restored on next launch. Without a matching run, Continue is cleared to avoid mixing snapshots. Current files are backed up first. BASE is reset so restoring cannot automatically overwrite Steam." destructive:YES action:^{
             ICSCoreRestoreBackup([backup[@"backup_id"] UTF8String]);
         }];
     } else if (indexPath.section == 5 && indexPath.row == 0) {
@@ -356,13 +387,42 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         activity.popoverPresentationController.sourceView = self.view;
         activity.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
         [self presentViewController:activity animated:YES completion:nil];
+    } else if (indexPath.section == 5 && indexPath.row == 2) {
+        UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Steam Save Version"
+            message:@"This release supports ordinary Repentance. Auto keeps an existing binding and asks when multiple generations exist. Choose Repentance explicitly if needed. Repentance+ support is deferred. Changing this resets BASE and may require a new first-sync choice."
+            preferredStyle:UIAlertControllerStyleActionSheet];
+        NSArray *names = @[@"Auto", @"Repentance"];
+        for (NSUInteger index = 0; index < names.count; index++) {
+            [sheet addAction:[UIAlertAction actionWithTitle:names[index] style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+                if (!ICSCoreSetCloudVersion((uint8_t)index)) [self alert:@"Sync busy" message:@"Wait for the current operation, then try again."];
+            }]];
+        }
+        [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+        sheet.popoverPresentationController.sourceView = self.view;
+        sheet.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
+        [self presentViewController:sheet animated:YES completion:nil];
+    } else if (indexPath.section == 5 && indexPath.row == 5) {
+        BOOL enabled = ![self.status[@"pc_mods"] boolValue];
+        [self confirm:enabled ? @"Use PC Lua mods with Continue?" : @"Use unmodded PC Continue?"
+            message:@"When enabled, Steam runs are marked for PC Lua mods and downloaded runs are adapted to iOS. Only the mod-state byte and linked checksums change; the original pair is backed up. Mod items, rooms and entities are NOT ported and may cause a crash or missing content. Keep PC Mods enabled while using this option. Changing it requires a fresh comparison/choice."
+            destructive:YES action:^{ ICSCoreSetPCMods(enabled); }];
+    } else if (indexPath.section == 5 && indexPath.row == 4) {
+        BOOL enabled = ![self.status[@"transfer_runs"] boolValue];
+        [self confirm:enabled ? @"Enable Continue transfer?" : @"Disable Continue transfer?"
+            message:@"Transfers the saved run together with progression for Repentance GSR0146 only. Save and exit to the menu first. Repentance+ runs and rerun snapshots stay local. Use PC Mods Compatibility separately if PC Lua mods are enabled. Both sides are backed up; different snapshots require your first-sync/conflict choice."
+            destructive:NO action:^{ ICSCoreSetRunTransfer(enabled); }];
+    } else if (indexPath.section == 5 && indexPath.row == 3) {
+        BOOL enabled = ![self.status[@"auto_upload"] boolValue];
+        [self confirm:enabled ? @"Enable automatic uploads?" : @"Use manual uploads?"
+            message:@"Automatic uploads wait for a stable valid save, check Steam again, back up the remote version, and upload only local-only changes against a verified BASE. Conflicts and first sync still require your choice. Network work runs off the game thread; background time is limited by iOS."
+            destructive:NO action:^{ ICSCoreSetAutoUpload(enabled); }];
     } else if (indexPath.section == 5 && indexPath.row == 1) {
         BOOL invisible = !ICSButtonIsInvisible();
         [NSUserDefaults.standardUserDefaults setBool:invisible forKey:ICSInvisibleButtonDefaultsKey];
         UIButton *button = (UIButton *)[ICSTopController().view.window viewWithTag:0x495343];
-        button.backgroundColor = invisible ? UIColor.clearColor : [UIColor.systemBackgroundColor colorWithAlphaComponent:0.82];
+        button.backgroundColor = invisible ? UIColor.clearColor : [UIColor colorWithWhite:0 alpha:0.72];
         button.layer.borderWidth = invisible ? 0 : 1;
-        [button setTitle:invisible ? @"" : @"☁︎" forState:UIControlStateNormal];
+        [button setTitle:invisible ? @"" : @"Steam ☁️" forState:UIControlStateNormal];
         [self.tableView reloadData];
     }
 }
@@ -438,15 +498,18 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
 }
 
 - (void)chooseSlotForLocal:(BOOL)useLocal {
-    NSArray *saves = self.status[@"local_saves"] ?: @[];
     NSString *message = useLocal
         ? @"This bypasses normal conflict protection. Existing versions are backed up, native iOS LZ4 data is converted to Windows format, the upload is verified, and only then does BASE change."
         : @"This bypasses normal conflict protection. Existing versions are backed up now; the selected Steam version is hash-pinned and applied before game initialization on your next launch.";
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:useLocal ? @"Force Push" : @"Force Pull" message:message preferredStyle:UIAlertControllerStyleActionSheet];
-    for (NSDictionary *save in saves) {
-        uint8_t slot = [save[@"slot"] unsignedCharValue];
+    // Force operations must remain available before the first successful
+    // comparison, including when a transient discovery error left no summary.
+    // The core independently locates and validates the selected live slot.
+    for (uint8_t slot = 1; slot <= 3; ++slot) {
         [sheet addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"Slot %u", slot] style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
-            ICSCoreForce(slot, useLocal);
+            if (!ICSCoreForce(slot, useLocal)) {
+                [self alert:@"Sync busy" message:@"Wait for the current operation, then try again. No force operation was started."];
+            }
         }]];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
@@ -464,6 +527,10 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         local[@"filename"] ?: @"unknown", local[@"size"], ICSDateForMilliseconds(local[@"modified_unix_ms"]), local[@"sha256"] ?: @"—",
         remote[@"filename"] ?: @"unknown", remote[@"size"], ICSDateForMilliseconds(remote[@"modified_unix_ms"]), remote[@"sha256"] ?: @"—",
         remoteExists ? @"Both copies have been backed up." : @"The iPhone copy has been backed up; Steam has no corresponding file."];
+    if ([choice[@"local_run_sha256"] isKindOfClass:NSString.class]) {
+        message=[message stringByAppendingFormat:@"\n\nThis choice includes progression AND the saved Continue run.\niPhone run %@\nSteam run %@",
+            ICSShortHash(choice[@"local_run_sha256"]),ICSShortHash(choice[@"remote_run_sha256"])];
+    }
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Choose Slot %u", slot] message:message preferredStyle:UIAlertControllerStyleActionSheet];
     [sheet addAction:[UIAlertAction actionWithTitle:@"Use iPhone Save" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) { ICSCoreResolve(slot, true); }]];
     if (remoteExists) {
@@ -549,6 +616,7 @@ static void ICSUpdateSettingsVisibility(void) {
     BOOL menuActive = ICSGameMenuIsActive();
     UIButton *button = (UIButton *)[window viewWithTag:0x495343];
     button.hidden = !menuActive;
+    ICSLayoutMenuButton(button,window);
     if (menuActive) return;
 
     UINavigationController *navigation = ICSActivePanelNavigation;
@@ -626,8 +694,14 @@ static void ICSRefreshAttention(void) {
     UIButton *button = (UIButton *)[ICSTopController().view.window viewWithTag:0x495343];
     BOOL needsChoice = [phase isEqualToString:@"conflict"] || [phase isEqualToString:@"first_sync"];
     BOOL needsRestart = [phase isEqualToString:@"restart_required"];
-    button.layer.borderColor = needsChoice ? UIColor.systemRedColor.CGColor
-        : needsRestart ? UIColor.systemOrangeColor.CGColor : UIColor.systemBlueColor.CGColor;
+    BOOL error = [phase isEqualToString:@"error"];
+    BOOL synchronized = [phase isEqualToString:@"idle"] && [status[@"authenticated"] boolValue]
+        && [status[@"cloud_synchronized"] boolValue];
+    button.layer.borderColor = (needsChoice || error) ? UIColor.systemRedColor.CGColor
+        : (synchronized && !needsRestart) ? UIColor.systemGreenColor.CGColor : UIColor.systemOrangeColor.CGColor;
+    button.accessibilityValue = (needsChoice || error) ? @"Needs attention"
+        : synchronized ? @"Synchronized" : @"Pending, synchronizing, or offline";
+    if (!needsChoice) ICSAttentionPresented = NO;
     if (ICSGameMenuIsActive() && needsChoice && !ICSAttentionPresented &&
         ICSTopController() != nil) {
         ICSAttentionPresented = YES;
@@ -638,26 +712,22 @@ static void ICSRefreshAttention(void) {
 static void ICSInstallButton(void) {
     UIWindow *window = ICSTopController().view.window;
     if (window == nil || [window viewWithTag:0x495343] != nil) return;
-    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIButton *button = [ICSMenuButton buttonWithType:UIButtonTypeCustom];
     button.tag = 0x495343;
-    button.translatesAutoresizingMaskIntoConstraints = NO;
+    button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
     BOOL invisible = ICSButtonIsInvisible();
-    button.backgroundColor = invisible ? UIColor.clearColor : [UIColor.systemBackgroundColor colorWithAlphaComponent:0.82];
-    button.layer.cornerRadius = 20;
-    button.layer.borderColor = UIColor.systemBlueColor.CGColor;
+    button.backgroundColor = invisible ? UIColor.clearColor : [UIColor colorWithWhite:0 alpha:0.72];
+    button.layer.cornerRadius = 8;
+    button.layer.borderColor = UIColor.systemOrangeColor.CGColor;
     button.layer.borderWidth = invisible ? 0 : 1;
-    button.titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
-    [button setTitle:invisible ? @"" : @"☁︎" forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    [button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    [button setTitle:invisible ? @"" : @"Steam ☁️" forState:UIControlStateNormal];
     button.accessibilityLabel = @"Open Isaac Steam Sync iOS";
     [button addTarget:ICSButtonTarget.shared action:@selector(openPanel) forControlEvents:UIControlEventTouchUpInside];
     [window addSubview:button];
     button.hidden = !ICSGameMenuIsActive();
-    [NSLayoutConstraint activateConstraints:@[
-        [button.trailingAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.trailingAnchor constant:-8],
-        [button.topAnchor constraintEqualToAnchor:window.safeAreaLayoutGuide.topAnchor constant:8],
-        [button.widthAnchor constraintEqualToConstant:40],
-        [button.heightAnchor constraintEqualToConstant:40],
-    ]];
+    ICSLayoutMenuButton(button,window);
     ICSCoreLog("ui", "overlay button installed");
 }
 

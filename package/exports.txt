@@ -6,6 +6,11 @@ _ICSCoreCopyBackupsJSON
 _ICSCoreCopyStatusJSON
 _ICSCoreDisconnectSteam
 _ICSCoreSetForeground
+_ICSCoreSetCloudVersion
+_ICSCoreSetAutoUpload
+_ICSCoreSetMenuReady
+_ICSCoreSetRunTransfer
+_ICSCoreSetPCMods
 _ICSCoreSubmitSteamGuardCode
 _ICSCoreSyncAchievements
 _ICSCoreForce
