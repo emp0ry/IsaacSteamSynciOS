@@ -1,0 +1,17 @@
+{
+  "name": "Isaac Steam Sync",
+  "repository": "IsaacSteamSynciOS",
+  "host": "isaacsteamios.emp0ry.com",
+  "kind": "bridge",
+  "port": 4180,
+  "version": "v1.3.0",
+  "assets": [
+    "IsaacSteamSynciOS-rootless.deb",
+    "IsaacSteamSynciOS.dylib",
+    "SHA256SUMS"
+  ],
+  "headline": [
+    "Your progress.",
+    "Across the divide."
+  ]
+}
