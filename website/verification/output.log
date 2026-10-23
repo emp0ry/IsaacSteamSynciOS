@@ -1,5 +1,0 @@
-
-> emp0ry-steam-website@1.0.0 check:output
-> node scripts/check-output.mjs
-
-Isaac Steam Sync: anchors, verified formats, static content, metadata/CSP, local assets, retained endpoints and Pages output pass.

@@ -353,3 +353,7 @@ This is an unofficial project and is not affiliated with Valve, Nicalis,
 Edmund McMillen, or Apple. It contains no Isaac application, DLC, saves, Steam
 credentials, Apple certificates, or DRM bypass. Source code is released under
 the [MIT License](LICENSE).
+
+## Website
+
+The [product website](https://isaacsteamios.emp0ry.com/) is also available at [emp0ry.com/IsaacSteamSynciOS/](https://emp0ry.com/IsaacSteamSynciOS/). Website sources and publication are maintained in the private emp0ry.com project. Completed application releases notify its central static build; this repository contains the application and its technical documentation.

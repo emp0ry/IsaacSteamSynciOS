@@ -20,10 +20,3 @@
 *.save
 *.dat
 .DS_Store
-
-# Product website
-/website/node_modules/
-/website/dist/
-
-# Keep the recorded website checks.
-!/website/verification/*.log
