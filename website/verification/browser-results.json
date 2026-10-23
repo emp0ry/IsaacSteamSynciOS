@@ -1,0 +1,545 @@
+{
+  "date": "2026-10-23",
+  "environment": "Codex in-app browser, local production builds, no network/CPU throttling; no physical-device claim",
+  "layouts": [
+    {
+      "canvas": "point-field is-ready",
+      "height": 740,
+      "hero": {
+        "bottom": 843.4453125,
+        "height": 775.4453125,
+        "left": 20,
+        "right": 300,
+        "top": 68,
+        "width": 280
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 608.78125,
+            "height": 488.78125,
+            "left": 20,
+            "right": 300,
+            "top": 120,
+            "width": 280
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 815.4453125,
+            "height": 186.6640625,
+            "left": 20,
+            "right": 300,
+            "top": 628.78125,
+            "width": 280
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        }
+      ],
+      "metrics": {
+        "cls": "0.0121",
+        "lcp": "92.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 320,
+        "width": 320
+      },
+      "title": "Isaac Steam Sync \u2014 Your progress. Across the divide.",
+      "width": 320,
+      "site": "steam",
+      "size": "320x740",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 844,
+      "hero": {
+        "bottom": 806.03125,
+        "height": 738.03125,
+        "left": 20,
+        "right": 370,
+        "top": 68,
+        "width": 350
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 524.703125,
+            "height": 404.703125,
+            "left": 20,
+            "right": 370,
+            "top": 120,
+            "width": 350
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 778.03125,
+            "height": 233.328125,
+            "left": 20,
+            "right": 370,
+            "top": 544.703125,
+            "width": 350
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "84.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "title": "Isaac Steam Sync \u2014 Your progress. Across the divide.",
+      "width": 390,
+      "site": "steam",
+      "size": "390x844",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 1024,
+      "hero": {
+        "bottom": 883.1875,
+        "height": 803.1875,
+        "left": 32.2578125,
+        "right": 735.7421875,
+        "top": 80,
+        "width": 703.484375
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 533.796875,
+            "height": 383.796875,
+            "left": 32.2578125,
+            "right": 735.7421875,
+            "top": 150,
+            "width": 703.484375
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 835.1875,
+            "height": 281.390625,
+            "left": 32.2578125,
+            "right": 735.7421875,
+            "top": 553.796875,
+            "width": 703.484375
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "96.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 768,
+        "width": 768
+      },
+      "title": "Isaac Steam Sync \u2014 Your progress. Across the divide.",
+      "width": 768,
+      "site": "steam",
+      "size": "768x1024",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 390,
+      "hero": {
+        "bottom": 911.03125,
+        "height": 831.03125,
+        "left": 35.4453125,
+        "right": 808.546875,
+        "top": 80,
+        "width": 773.1015625
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 533.796875,
+            "height": 383.796875,
+            "left": 35.4453125,
+            "right": 808.546875,
+            "top": 150,
+            "width": 773.1015625
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 863.03125,
+            "height": 309.234375,
+            "left": 35.4453125,
+            "right": 808.546875,
+            "top": 553.796875,
+            "width": 773.1015625
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "152.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 844,
+        "width": 844
+      },
+      "title": "Isaac Steam Sync \u2014 Your progress. Across the divide.",
+      "width": 844,
+      "site": "steam",
+      "size": "844x390",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 720,
+      "hero": {
+        "bottom": 968.0390625,
+        "height": 888.0390625,
+        "left": 53.7578125,
+        "right": 1226.234375,
+        "top": 80,
+        "width": 1172.4765625
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 582.0390625,
+            "height": 432.0390625,
+            "left": 53.7578125,
+            "right": 1226.234375,
+            "top": 150,
+            "width": 1172.4765625
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 912.0390625,
+            "height": 310,
+            "left": 159.9921875,
+            "right": 1119.9921875,
+            "top": 602.0390625,
+            "width": 960
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "96.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 1280,
+        "width": 1280
+      },
+      "title": "Isaac Steam Sync \u2014 Your progress. Across the divide.",
+      "width": 1280,
+      "site": "steam",
+      "size": "1280x720",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 900,
+      "hero": {
+        "bottom": 989.3203125,
+        "height": 909.3203125,
+        "left": 60.4765625,
+        "right": 1379.515625,
+        "top": 80,
+        "width": 1319.0390625
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 603.3203125,
+            "height": 453.3203125,
+            "left": 60.4765625,
+            "right": 1379.515625,
+            "top": 150,
+            "width": 1319.0390625
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 933.3203125,
+            "height": 310,
+            "left": 239.9921875,
+            "right": 1199.9921875,
+            "top": 623.3203125,
+            "width": 960
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "104.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 1440,
+        "width": 1440
+      },
+      "title": "Isaac Steam Sync \u2014 Your progress. Across the divide.",
+      "width": 1440,
+      "site": "steam",
+      "size": "1440x900",
+      "headerCollisions": []
+    },
+    {
+      "canvas": "point-field is-ready",
+      "height": 1080,
+      "hero": {
+        "bottom": 989.6640625,
+        "height": 909.6640625,
+        "left": 300,
+        "right": 1620,
+        "top": 80,
+        "width": 1320
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": 603.6640625,
+            "height": 453.6640625,
+            "left": 300,
+            "right": 1620,
+            "top": 150,
+            "width": 1320
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": 933.6640625,
+            "height": 310,
+            "left": 480,
+            "right": 1440,
+            "top": 623.6640625,
+            "width": 960
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        }
+      ],
+      "metrics": {
+        "cls": "0",
+        "lcp": "88.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 1920,
+        "width": 1920
+      },
+      "title": "Isaac Steam Sync \u2014 Your progress. Across the divide.",
+      "width": 1920,
+      "site": "steam",
+      "size": "1920x1080",
+      "headerCollisions": []
+    }
+  ],
+  "interactions": {
+    "site": "steam",
+    "mode": "reduced",
+    "tabs": [
+      {
+        "id": "install-tab-0",
+        "images": [],
+        "selected": "true",
+        "visible": true
+      },
+      {
+        "id": "install-tab-1",
+        "images": [],
+        "selected": "true",
+        "visible": true
+      }
+    ],
+    "menu": {
+      "open": true,
+      "escape": true,
+      "anchor": {
+        "expected": 92,
+        "focus": "features",
+        "open": false,
+        "top": 92.03125
+      }
+    },
+    "faq": {
+      "name": "Are conflicting saves combined?\n+",
+      "open": ""
+    },
+    "layout": {
+      "canvas": "point-field is-ready",
+      "height": 844,
+      "hero": {
+        "bottom": -4233.46875,
+        "height": 738.03125,
+        "left": 20,
+        "right": 370,
+        "top": -4971.5,
+        "width": 350
+      },
+      "heroChildren": [
+        {
+          "box": {
+            "bottom": -4514.796875,
+            "height": 404.703125,
+            "left": 20,
+            "right": 370,
+            "top": -4919.5,
+            "width": 350
+          },
+          "class": "hero-copy"
+        },
+        {
+          "box": {
+            "bottom": -4261.46875,
+            "height": 233.328125,
+            "left": 20,
+            "right": 370,
+            "top": -4494.796875,
+            "width": 350
+          },
+          "class": "hero-art"
+        }
+      ],
+      "horizontal": [],
+      "images": [
+        {
+          "loaded": true,
+          "src": "/site/field.svg"
+        }
+      ],
+      "metrics": {
+        "cls": "0.0000",
+        "lcp": "136.0"
+      },
+      "motion": "reduced",
+      "outside": [],
+      "scroll": {
+        "scrollWidth": 390,
+        "width": 390
+      },
+      "title": "Isaac Steam Sync \u2014 Your progress. Across the divide.",
+      "width": 390
+    },
+    "errors": []
+  },
+  "gallery": {
+    "site": "steam",
+    "featureAnchor": {
+      "scroll": 772.5,
+      "top": 92.03125
+    },
+    "viewer": null,
+    "keyboardTabs": null,
+    "logs": []
+  },
+  "motion": {
+    "site": "steam",
+    "waves": {
+      "activePulses": "4",
+      "draws": "22",
+      "state": "running"
+    },
+    "running": {
+      "activePulses": "0",
+      "cls": "0",
+      "drawP95": "1.90",
+      "draws": "61",
+      "frameMedian": "33.3",
+      "lcp": "100.0",
+      "state": "running"
+    },
+    "paused": true,
+    "errors": []
+  },
+  "fallback": {
+    "site": "steam",
+    "canvasOpacity": "0",
+    "class": "point-field",
+    "errors": [],
+    "fallbackOpacity": "0.95",
+    "loaded": true,
+    "motion": "reduced"
+  },
+  "final_controls": {
+    "site": "steam",
+    "blur": "blur(32px) saturate(1.1)",
+    "canvasState": "static",
+    "githubHidden": true,
+    "menuHeight": 411.796875
+  }
+}
