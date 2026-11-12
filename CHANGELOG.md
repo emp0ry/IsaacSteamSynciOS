@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.3.1 - 2026-11-12
+
+- Automatically reconcile save-derived Steam achievements from stable saves in
+  the menu, independently of automatic save uploads and Cloud errors/conflicts.
+  Keep one serialized Steam session, bounded retries and additive-only writes.
+- Add Sync Achievements Only and a separate achievement result in the Steam
+  panel. Manual Sync Now still checks achievements if Cloud synchronization fails.
+- Verify stable save observations, refuse empty/incomplete Steam schemas, and
+  record the missing names/counts in a private audit report. Real PlayCover
+  acceptance added three missing unlocks and verified 319/319 local achievements
+  on Steam; a repeated automatic check added zero and cleared zero.
+- Use in-window UIKit confirmation, choice, and sign-in dialogs on PlayCover/Mac Catalyst
+  so mouse-generated touches can reach Cancel, Continue, and the other actions. iPhone
+  installations retain the native UIKit alerts. Follow-up actions wait for dismissal.
+- Include a separately signed PlayCover dylib alongside the iOS dylib and rootless
+  package, with checksums for all three binaries.
+
 ## 1.3.0 - 2026-10-15
 
 - Add explicit ordinary-Repentance cloud selection without timestamp guessing.

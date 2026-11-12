@@ -7,6 +7,7 @@ SDK := $(shell xcrun --sdk iphoneos --show-sdk-path)
 CLANG := $(shell xcrun --sdk iphoneos --find clang)
 CORE_LIBRARY := $(CORE_DIR)/target/$(TARGET)/release/libisaac_steam_core.a
 DYLIB := $(PROJECT_ROOT)/build/IsaacSteamSynciOS.dylib
+PLAYCOVER_DYLIB := $(PROJECT_ROOT)/build/IsaacSteamSynciOS-PlayCover.dylib
 DEB_STAGE := $(PROJECT_ROOT)/package/stage
 DEB := $(PROJECT_ROOT)/packages/IsaacSteamSynciOS-rootless.deb
 MIN_IOS ?= 15.0
@@ -21,7 +22,9 @@ OBJC_SOURCES := \
 	$(PROJECT_ROOT)/src/isaac/IsaacGameState.mm \
 	$(PROJECT_ROOT)/src/ui/IsaacCloudUI.m
 
-.PHONY: all core dylib package test audit release clean
+OBJC_SOURCES += $(PROJECT_ROOT)/src/ui/IsaacCloudDialog.m
+
+.PHONY: all core dylib playcover package test audit release clean
 
 all: dylib package
 
@@ -47,6 +50,13 @@ dylib: core
 	elif command -v ldid >/dev/null 2>&1; then \
 		ldid -S "$(DYLIB)"; \
 	fi
+
+playcover: dylib
+	xcrun vtool -set-build-version maccatalyst 15.0 15.0 -replace \
+		-output "$(PLAYCOVER_DYLIB)" "$(DYLIB)"
+	codesign --force --sign - --timestamp=none --identifier com.emp0ry.isaacsteamsyncios.dylib "$(PLAYCOVER_DYLIB)"
+	codesign --verify --strict "$(PLAYCOVER_DYLIB)"
+	@xcrun vtool -show-build "$(PLAYCOVER_DYLIB)" | rg -q 'platform MACCATALYST'
 
 package: dylib
 	rm -rf "$(DEB_STAGE)"
@@ -81,11 +91,14 @@ release:
 	$(MAKE) test
 	$(MAKE) package EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	$(MAKE) audit EXTRA_CFLAGS='-Wall -Wextra -Werror'
+	$(MAKE) playcover EXTRA_CFLAGS='-Wall -Wextra -Werror'
 	mkdir -p "$(DIST)"
 	cp "$(DYLIB)" "$(DIST)/IsaacSteamSynciOS.dylib"
+	cp "$(PLAYCOVER_DYLIB)" "$(DIST)/IsaacSteamSynciOS-PlayCover.dylib"
 	cp "$(DEB)" "$(DIST)/IsaacSteamSynciOS-rootless.deb"
 	cd "$(DIST)" && shasum -a 256 \
 		IsaacSteamSynciOS.dylib \
+		IsaacSteamSynciOS-PlayCover.dylib \
 		IsaacSteamSynciOS-rootless.deb > SHA256SUMS
 
 clean:

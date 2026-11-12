@@ -4,6 +4,25 @@ use std::{path::PathBuf, time::SystemTime};
 
 pub type Fingerprint = Vec<Option<(u64, SystemTime)>>;
 
+// Save-upload preferences and Cloud errors/conflicts are deliberately not
+// eligibility inputs for this independent, additive achievement operation.
+pub fn achievement_poll_allowed(
+    foreground: bool,
+    menu_ready: bool,
+    startup_active: bool,
+    connected: bool,
+    cloud_phase: &str,
+) -> bool {
+    foreground
+        && menu_ready
+        && !startup_active
+        && connected
+        && !matches!(
+            cloud_phase,
+            "connecting" | "awaiting_steam_guard" | "restart_required"
+        )
+}
+
 pub fn fingerprint(paths: &[PathBuf]) -> Fingerprint {
     paths
         .iter()
@@ -67,5 +86,26 @@ mod tests {
         watcher.submitted();
         watcher.retry();
         assert!(watcher.ready(80));
+    }
+
+    #[test]
+    fn achievements_do_not_depend_on_cloud_upload_success_or_conflict_resolution() {
+        for phase in [
+            "idle",
+            "offline",
+            "error",
+            "conflict",
+            "first_sync",
+            "upload_required",
+        ] {
+            assert!(achievement_poll_allowed(true, true, false, true, phase));
+        }
+        for phase in ["connecting", "awaiting_steam_guard", "restart_required"] {
+            assert!(!achievement_poll_allowed(true, true, false, true, phase));
+        }
+        assert!(!achievement_poll_allowed(false, true, false, true, "idle"));
+        assert!(!achievement_poll_allowed(true, false, false, true, "idle"));
+        assert!(!achievement_poll_allowed(true, true, true, true, "idle"));
+        assert!(!achievement_poll_allowed(true, true, false, false, "idle"));
     }
 }

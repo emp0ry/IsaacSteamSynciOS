@@ -4,7 +4,9 @@ Native Steam Cloud and achievement synchronization for **The Binding of Isaac: R
 
 IsaacSteamSynciOS connects directly to Steam from inside Isaac. It can pull the
 Steam version before play, publish a verified iPhone save, and add native-save
-achievements that are still locked on Steam when the user taps **Sync Now**.
+achievements that are still locked on Steam automatically after saves settle
+and Isaac returns to its menu. **Sync Now** and **Sync Achievements Only** are
+also available.
 It never clears an existing Steam achievement. No Game Center, desktop
 companion, Steam desktop client, server, JIT, or permanent background daemon is
 required.
@@ -15,6 +17,7 @@ The same ARM64 synchronization core supports both installation modes:
 | --- | --- |
 | Jailbroken iPhone or iPad | `IsaacSteamSynciOS-rootless.deb` |
 | Non-jailbroken iPhone or iPad | `IsaacSteamSynciOS.dylib` |
+| Apple silicon Mac running the iOS app through PlayCover | `IsaacSteamSynciOS-PlayCover.dylib` |
 
 The standalone dylib links only Apple system libraries. ElleKit is used only by
 the optional rootless package to load it into Isaac.
@@ -36,8 +39,8 @@ the optional rootless package to load it into Isaac.
   tested from iOS to Windows and back
 - Optional PC Mods Compatibility for the saved run's mod-state marker;
   custom Windows mod content is not ported
-- Additive Steam achievement sync from native Isaac persistent saves during
-  **Sync Now**; existing Steam unlocks are never cleared
+- Automatic additive Steam achievement sync from stable native Isaac saves,
+  independent of Cloud upload errors/conflicts; existing unlocks are never cleared
 - First-sync and true-conflict choices that never guess a winner
 - Versioned local and remote backups with retention and restore
 - Same-directory atomic local replacement with final hash verification
@@ -95,7 +98,7 @@ connecting, or offline, and red for an error or choice that needs attention.
 an existing exact cloud-file binding. If both generations exist without a prior
 binding, it refuses to pick by timestamp; choose Repentance explicitly.
 
-Repentance+ synchronization is **not enabled in v1.3.0**. Preliminary format
+Repentance+ synchronization is **not enabled in this release**. Preliminary format
 adaptation exists in the source and has byte-round-trip tests, but full Steam
 and Windows acceptance testing is deferred. Repentance+ cloud files are refused
 rather than automatically converted. This release does not add Repentance+
@@ -107,13 +110,27 @@ Achievement synchronization reads the achievement section directly from the
 three native `rep_persistentgamedata*.dat` files. It does not read or submit
 Game Center achievements.
 
-After a successful manual **Sync Now**, the core reads Steam's live AppID
+An independent metadata-only observer checks stable saves from the menu after
+startup and after file changes. It uses the same serialized Steam session as
+Cloud, but does not upload/download saves, resolve a conflict or advance BASE.
+It remains active when Automatic Upload is off, and retries failed achievement
+checks with backoff. Menus remain responsive; no network work blocks the game
+thread. **Sync Achievements Only** repeats this check without running Cloud.
+
+The core reads Steam's live AppID
 `250900` achievement schema and current user-stat values. For every Isaac
 achievement ID present in an iPhone save but still locked on Steam, it sets only
 the corresponding missing bit. Existing Steam stat-group values are preserved,
 `explicit_reset` is always false, and the result is read back from Steam for
 verification. If Steam omits the current value or CRC required for a safe
-additive update, the write is refused.
+additive update, the write is refused. Empty/incomplete schemas are reported as
+errors, not a successful zero-unlock result. The status panel displays achievement
+results separately from Cloud. A private `state/achievement-sync-report.json`
+records the local/Steam counts and missing names for the latest verified check.
+
+Manual **Sync Now** checks achievements even when its Cloud comparison fails.
+New in-game unlocks are submitted after Isaac writes them and returns to the
+menu, not by reading Game Center or granting unearned achievements.
 
 The direction is intentionally one-way:
 
@@ -174,6 +191,14 @@ Do not use this option as a promise of general Windows-mod compatibility.
 Keep PC Mods enabled while the setting is on. Unknown run layouts are refused.
 
 ## Installation
+
+### PlayCover on macOS
+
+Use `IsaacSteamSynciOS-PlayCover.dylib` when injecting into the iOS Isaac app
+through PlayCover, then re-sign the app and restart it. Do not inject both variants
+of Steam Sync at once. The PlayCover build uses in-window dialogs so Cancel,
+Continue, account sign-in, and conflict choices remain clickable with a mouse.
+This is not a mod for the native macOS Steam version of Isaac.
 
 ### Jailbroken devices
 
@@ -268,6 +293,7 @@ Release artifacts are written to `dist/`:
 
 ```text
 IsaacSteamSynciOS.dylib
+IsaacSteamSynciOS-PlayCover.dylib
 IsaacSteamSynciOS-rootless.deb
 SHA256SUMS
 ```
@@ -303,6 +329,11 @@ The deterministic unchanged, local-only, remote-only, converged, first-sync,
 conflict, save parsing, additive stat-bit update, and achievement-preservation
 branches are covered by Rust tests. Public binaries are also checked for
 jailbreak-only and Game Center dynamic dependencies.
+
+The v1.3.1 update was also tested in PlayCover on macOS: it added three missing
+save-earned Steam achievements, verified 319 local unlocks against 319 on Steam,
+and added zero on a repeated automatic check. No Steam achievements were cleared.
+The separate achievement status and mouse-accessible dialogs were verified there.
 
 The current update additionally verified ordinary Repentance Continue in both
 directions with PC Mods on and off, and a queued pull applied before native

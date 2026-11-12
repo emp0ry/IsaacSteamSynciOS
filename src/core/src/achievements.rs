@@ -1,5 +1,7 @@
 use crate::{
-    local::discover_saves, model::STEAM_APP_ID, save_achievements::unlocked_achievement_ids,
+    local::{discover_saves, identity_for_path},
+    model::STEAM_APP_ID,
+    save_achievements::unlocked_achievement_ids,
     steam::cm::SteamSession,
 };
 use anyhow::{Context, Result, bail};
@@ -36,6 +38,15 @@ pub struct AchievementView {
     pub achieved: bool,
     pub unlock_time: u64,
     pub present_in_local_save: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AchievementSyncReport {
+    pub local_unlocked: usize,
+    pub steam_unlocked_before: usize,
+    pub steam_unlocked_after: usize,
+    pub missing_before: Vec<AchievementView>,
+    pub added: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -87,18 +98,17 @@ pub fn achievements_json() -> String {
 /// - local unlocked + Steam locked => unlock on Steam
 /// - local unlocked + Steam unlocked => no-op
 /// - local locked + Steam unlocked => NEVER clear Steam
-pub async fn sync_from_local_saves(home: &Path, session: &SteamSession) -> Result<usize> {
-    let local_ids = collect_local_unlocks(home)?;
+pub async fn sync_from_local_saves(
+    home: &Path,
+    session: &SteamSession,
+) -> Result<AchievementSyncReport> {
+    let local_ids = collect_stable_local_unlocks(home).await?;
     {
         let mut target = save_unlocks()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         target.clear();
         target.extend(local_ids.iter().map(u32::to_string));
-    }
-
-    if local_ids.is_empty() {
-        return Ok(0);
     }
 
     let state = session.connection.state_snapshot().await;
@@ -109,6 +119,7 @@ pub async fn sync_from_local_saves(home: &Path, session: &SteamSession) -> Resul
     let current = get_achievements_bounded(&session.connection, &state, STEAM_APP_ID)
         .await
         .context("request Isaac Steam achievement schema")?;
+    validate_schema_coverage(&local_ids, &current)?;
     let previously_achieved = current
         .iter()
         .filter(|achievement| achievement.achieved)
@@ -116,27 +127,50 @@ pub async fn sync_from_local_saves(home: &Path, session: &SteamSession) -> Resul
         .collect::<BTreeSet<_>>();
     replace_cache(current);
 
-    let names_to_add = {
+    let missing_before = {
         let known = cache()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         local_ids
             .iter()
             .map(u32::to_string)
-            .filter(|name| known.get(name).is_some_and(|item| !item.achieved))
+            .filter_map(|name| {
+                known
+                    .get(&name)
+                    .filter(|item| !item.achieved)
+                    .map(|item| AchievementView {
+                        api_name: name,
+                        display_name: item.name.clone(),
+                        achieved: false,
+                        unlock_time: 0,
+                        present_in_local_save: true,
+                    })
+            })
             .collect::<Vec<_>>()
+    };
+    let names_to_add = missing_before
+        .iter()
+        .map(|item| item.api_name.clone())
+        .collect::<Vec<_>>();
+    let mut report = AchievementSyncReport {
+        local_unlocked: local_ids.len(),
+        steam_unlocked_before: previously_achieved.len(),
+        steam_unlocked_after: previously_achieved.len(),
+        missing_before,
+        added: 0,
     };
 
     // Critical safety property: never send locked/false values and never submit
     // a reset. Only bitfields containing missing true unlocks are written.
     if names_to_add.is_empty() {
-        return Ok(0);
+        return Ok(report);
     }
 
     let verified = store_missing_unlocks(&session.connection, &state, STEAM_APP_ID, &names_to_add)
         .await
         .context("store and verify missing Isaac Steam achievements")?;
     ensure_no_existing_unlocks_lost(&previously_achieved, &verified)?;
+    report.steam_unlocked_after = verified.iter().filter(|item| item.achieved).count();
     replace_cache(verified);
 
     let verified_count = {
@@ -154,7 +188,25 @@ pub async fn sync_from_local_saves(home: &Path, session: &SteamSession) -> Resul
             names_to_add.len()
         );
     }
-    Ok(verified_count)
+    report.added = verified_count;
+    Ok(report)
+}
+
+fn validate_schema_coverage(local: &BTreeSet<u32>, current: &[ProtocolAchievement]) -> Result<()> {
+    if current.is_empty() {
+        bail!("Steam returned no achievement schema; achievement sync is not verified");
+    }
+    let known = current
+        .iter()
+        .map(|item| item.apiname.as_str())
+        .collect::<BTreeSet<_>>();
+    if local
+        .iter()
+        .any(|id| !known.contains(id.to_string().as_str()))
+    {
+        bail!("Steam schema omitted save-derived achievement IDs; refusing incomplete sync");
+    }
+    Ok(())
 }
 
 async fn store_missing_unlocks(
@@ -383,20 +435,35 @@ fn find_stats_node(root: &KVValue) -> Option<&KVValue> {
         .find_map(|(_, value)| value.get("stats"))
 }
 
-fn collect_local_unlocks(home: &Path) -> Result<BTreeSet<u32>> {
+async fn collect_stable_local_unlocks(home: &Path) -> Result<BTreeSet<u32>> {
     let saves = discover_saves(home)?;
     if saves.is_empty() {
         bail!("no valid Isaac persistentgamedata save files were found");
     }
 
+    // Require a second exact observation, including CRC validation. Never
+    // derive permanent Steam unlocks from a partially written save snapshot.
     let mut unlocked = BTreeSet::new();
-    for save in saves {
+    let mut observed = Vec::new();
+    for save in &saves {
+        let before = identity_for_path(&save.path)?;
         let raw = fs::read(&save.path)
             .with_context(|| format!("read {} for achievement sync", save.path.display()))?;
         unlocked.extend(
             unlocked_achievement_ids(&raw)
                 .with_context(|| format!("parse achievements from {}", save.path.display()))?,
         );
+        if crate::local::identity_for_bytes(&raw).sha256 != before.sha256 {
+            bail!("Isaac save changed while reading achievements");
+        }
+        observed.push(before);
+    }
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    for (save, before) in saves.iter().zip(observed) {
+        let after = identity_for_path(&save.path)?;
+        if before != after {
+            bail!("Isaac save changed while checking achievements; retry from menu");
+        }
     }
     Ok(unlocked)
 }
@@ -513,5 +580,57 @@ mod tests {
 
         let error = ensure_no_existing_unlocks_lost(&prior, &verified).unwrap_err();
         assert!(error.to_string().contains("failed to preserve 1"));
+    }
+
+    #[test]
+    fn empty_or_incomplete_schema_is_not_a_successful_zero_sync() {
+        assert!(validate_schema_coverage(&BTreeSet::from([1]), &[]).is_err());
+        let current = vec![ProtocolAchievement {
+            apiname: "1".into(),
+            achieved: true,
+            unlocktime: 1,
+            name: None,
+            description: None,
+        }];
+        assert!(validate_schema_coverage(&BTreeSet::from([1, 2]), &current).is_err());
+        assert!(validate_schema_coverage(&BTreeSet::from([1]), &current).is_ok());
+    }
+
+    #[tokio::test]
+    async fn stable_local_unlocks_use_real_save_layout_without_mutating_it() {
+        let root =
+            std::env::temp_dir().join(format!("isaac-achievements-{}", uuid::Uuid::new_v4()));
+        let dir = root.join("Documents/Repentance");
+        fs::create_dir_all(&dir).unwrap();
+        let raw = crate::save_compat::tests::fixture(crate::save_compat::CloudVersion::Repentance);
+        let path = dir.join("rep_persistentgamedata1.dat");
+        fs::write(&path, &raw).unwrap();
+        let before = identity_for_path(&path).unwrap();
+        let expected = unlocked_achievement_ids(&raw).unwrap();
+        assert_eq!(collect_stable_local_unlocks(&root).await.unwrap(), expected);
+        assert_eq!(identity_for_path(&path).unwrap(), before);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn changing_save_refuses_permanent_steam_unlocks() {
+        let root =
+            std::env::temp_dir().join(format!("isaac-achievements-{}", uuid::Uuid::new_v4()));
+        let dir = root.join("Documents/Repentance");
+        fs::create_dir_all(&dir).unwrap();
+        let raw = crate::save_compat::tests::fixture(crate::save_compat::CloudVersion::Repentance);
+        let path = dir.join("rep_persistentgamedata1.dat");
+        fs::write(&path, &raw).unwrap();
+        let pending = collect_stable_local_unlocks(&root);
+        let mutate = async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let mut changed = raw.clone();
+            changed[32 + 1] = 1;
+            crate::isaac_format::write_valid_checksum_for_tests(&mut changed);
+            fs::write(&path, &changed).unwrap();
+        };
+        let (result, _) = tokio::join!(pending, mutate);
+        assert!(result.unwrap_err().to_string().contains("save changed"));
+        let _ = fs::remove_dir_all(root);
     }
 }

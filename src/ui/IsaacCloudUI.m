@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <CoreImage/CoreImage.h>
 #import "../loaders/IsaacCloudCore.h"
+#import "IsaacCloudDialog.h"
 
 static NSString *const ICSInvisibleButtonDefaultsKey = @"IsaacCloudSyncInvisibleMenuButton";
 static BOOL ICSQRPresentationScheduled = NO;
@@ -184,7 +185,7 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         return @[@"Cancel Steam Sign-In"];
     }
     if ([self.status[@"account_connected"] boolValue]) {
-        return @[@"Disconnect Steam Account", @"Sync Now", @"Force Push…", @"Force Pull…"];
+        return @[@"Disconnect Steam Account", @"Sync Now", @"Sync Achievements Only", @"Force Push…", @"Force Pull…"];
     }
     return @[@"Connect Steam Account"];
 }
@@ -238,7 +239,7 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
-        case 0: return 5;
+        case 0: return 6;
         case 1: return self.actionRows.count;
         case 2: return 3;
         case 3: return [self.status[@"pending_choices"] count];
@@ -268,7 +269,7 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
     cell.textLabel.textColor = UIColor.labelColor;
 
     if (indexPath.section == 0) {
-        NSArray *labels = @[@"State", @"Detail", @"Steam account", @"Steam presence", @"Last successful check"];
+        NSArray *labels = @[@"State", @"Detail", @"Steam account", @"Steam presence", @"Last successful check", @"Steam achievements"];
         id value = @"—";
         if (indexPath.row == 0) value = self.status[@"phase"] ?: @"—";
         if (indexPath.row == 1) value = self.status[@"detail"] ?: @"—";
@@ -287,6 +288,7 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
             NSTimeInterval seconds = [self.status[@"last_sync_unix_ms"] doubleValue] / 1000.0;
             value = [NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:seconds] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterMediumStyle];
         }
+        if (indexPath.row == 5) value = self.status[@"achievements_detail"] ?: @"Pending automatic comparison";
         cell.textLabel.text = [NSString stringWithFormat:@"%@\n%@", labels[indexPath.row], value];
         return cell;
     }
@@ -366,6 +368,11 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
             [self alert:@"Approve with Steam Mobile" message:@"Open Steam on the trusted phone for this account, open the pending sign-in request, and tap Approve. No QR is used for Login + Password."];
         } else if ([action isEqualToString:@"Disconnect Steam Account"]) {
             [self confirm:@"Disconnect Steam?" message:@"The refresh token will be removed from Keychain. Local saves and backups remain." destructive:YES action:^{ ICSCoreDisconnectSteam(); }];
+        } else if ([action isEqualToString:@"Sync Achievements Only"]) {
+            [self confirm:@"Sync save achievements to Steam?" message:@"Adds only achievements already unlocked in your native Isaac saves. Existing Steam unlocks are never cleared. No save upload, download, conflict resolution or Continue replacement is performed. This check also runs automatically from the menu after save files settle."
+                destructive:NO action:^{
+                    if (!ICSCoreSyncAchievements()) [self alert:@"Sync busy" message:@"Wait for the current operation and try again from Isaac's menu."];
+                }];
         } else if ([action isEqualToString:@"Sync Now"]) {
             [self confirm:@"Sync iPhone and Steam now?" message:@"IsaacSteamSynciOS compares iPhone, Steam, and the last common BASE. iPhone LZ4 data is converted to the normal Windows format before upload, the current Steam copy is backed up, and a true conflict is never overwritten automatically. It then compares native Isaac save achievements with Steam and adds only missing unlocks. Existing Steam achievements are never cleared, and Game Center is not used." destructive:NO action:^{ ICSCoreSyncNow("manual"); }];
         } else if ([action isEqualToString:@"Force Push…"]) {
@@ -388,16 +395,16 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         activity.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
         [self presentViewController:activity animated:YES completion:nil];
     } else if (indexPath.section == 5 && indexPath.row == 2) {
-        UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Steam Save Version"
+        ICSDialogController *sheet = [ICSDialogController alertControllerWithTitle:@"Steam Save Version"
             message:@"This release supports ordinary Repentance. Auto keeps an existing binding and asks when multiple generations exist. Choose Repentance explicitly if needed. Repentance+ support is deferred. Changing this resets BASE and may require a new first-sync choice."
             preferredStyle:UIAlertControllerStyleActionSheet];
         NSArray *names = @[@"Auto", @"Repentance"];
         for (NSUInteger index = 0; index < names.count; index++) {
-            [sheet addAction:[UIAlertAction actionWithTitle:names[index] style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+            [sheet addAction:[ICSDialogAction actionWithTitle:names[index] style:UIAlertActionStyleDefault handler:^(__unused ICSDialogAction *action) {
                 if (!ICSCoreSetCloudVersion((uint8_t)index)) [self alert:@"Sync busy" message:@"Wait for the current operation, then try again."];
             }]];
         }
-        [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+        [sheet addAction:[ICSDialogAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
         sheet.popoverPresentationController.sourceView = self.view;
         sheet.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
         [self presentViewController:sheet animated:YES completion:nil];
@@ -428,23 +435,23 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
 }
 
 - (void)presentConnectOptions {
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Connect Steam Account" message:@"Choose a secure sign-in method. Passwords and Steam Guard codes are used in memory only and are never saved or logged." preferredStyle:UIAlertControllerStyleActionSheet];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"QR Code / Steam Mobile" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+    ICSDialogController *sheet = [ICSDialogController alertControllerWithTitle:@"Connect Steam Account" message:@"Choose a secure sign-in method. Passwords and Steam Guard codes are used in memory only and are never saved or logged." preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[ICSDialogAction actionWithTitle:@"QR Code / Steam Mobile" style:UIAlertActionStyleDefault handler:^(__unused ICSDialogAction *action) {
         self.qrPresented = NO;
         ICSQRDismissedByUser = NO;
         ICSCoreConnectSteam();
     }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Login + Password" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+    [sheet addAction:[ICSDialogAction actionWithTitle:@"Login + Password" style:UIAlertActionStyleDefault handler:^(__unused ICSDialogAction *action) {
         [self promptForCredentials];
     }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [sheet addAction:[ICSDialogAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = self.view;
     sheet.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
     [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)promptForCredentials {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Steam Login" message:@"Steam may ask for Mobile approval or a Steam Guard code next." preferredStyle:UIAlertControllerStyleAlert];
+    ICSDialogController *alert = [ICSDialogController alertControllerWithTitle:@"Steam Login" message:@"Steam may ask for Mobile approval or a Steam Guard code next." preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
         field.placeholder = @"Steam account name";
         field.textContentType = UITextContentTypeUsername;
@@ -456,8 +463,8 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         field.secureTextEntry = YES;
         field.textContentType = UITextContentTypePassword;
     }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Sign In" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+    [alert addAction:[ICSDialogAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[ICSDialogAction actionWithTitle:@"Sign In" style:UIAlertActionStyleDefault handler:^(__unused ICSDialogAction *action) {
         UITextField *accountField = alert.textFields.firstObject;
         UITextField *passwordField = alert.textFields.lastObject;
         NSString *account = accountField.text ?: @"";
@@ -476,17 +483,17 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
 - (void)promptForSteamGuard:(NSString *)kind {
     NSString *message = [kind isEqualToString:@"email_code"]
         ? @"Enter the code Steam sent to your email." : @"Enter your current Steam Guard code.";
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Steam Guard" message:message preferredStyle:UIAlertControllerStyleAlert];
+    ICSDialogController *alert = [ICSDialogController alertControllerWithTitle:@"Steam Guard" message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
         field.placeholder = @"Steam Guard code";
         field.autocapitalizationType = UITextAutocapitalizationTypeAllCharacters;
         field.autocorrectionType = UITextAutocorrectionTypeNo;
         if (@available(iOS 12.0, *)) field.textContentType = UITextContentTypeOneTimeCode;
     }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(__unused UIAlertAction *action) {
+    [alert addAction:[ICSDialogAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(__unused ICSDialogAction *action) {
         self.guardPromptPresented = NO;
     }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Continue" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+    [alert addAction:[ICSDialogAction actionWithTitle:@"Continue" style:UIAlertActionStyleDefault handler:^(__unused ICSDialogAction *action) {
         NSString *code = alert.textFields.firstObject.text ?: @"";
         if (!ICSCoreSubmitSteamGuardCode(code.UTF8String)) {
             self.guardPromptPresented = NO;
@@ -501,18 +508,18 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
     NSString *message = useLocal
         ? @"This bypasses normal conflict protection. Existing versions are backed up, native iOS LZ4 data is converted to Windows format, the upload is verified, and only then does BASE change."
         : @"This bypasses normal conflict protection. Existing versions are backed up now; the selected Steam version is hash-pinned and applied before game initialization on your next launch.";
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:useLocal ? @"Force Push" : @"Force Pull" message:message preferredStyle:UIAlertControllerStyleActionSheet];
+    ICSDialogController *sheet = [ICSDialogController alertControllerWithTitle:useLocal ? @"Force Push" : @"Force Pull" message:message preferredStyle:UIAlertControllerStyleActionSheet];
     // Force operations must remain available before the first successful
     // comparison, including when a transient discovery error left no summary.
     // The core independently locates and validates the selected live slot.
     for (uint8_t slot = 1; slot <= 3; ++slot) {
-        [sheet addAction:[UIAlertAction actionWithTitle:[NSString stringWithFormat:@"Slot %u", slot] style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
+        [sheet addAction:[ICSDialogAction actionWithTitle:[NSString stringWithFormat:@"Slot %u", slot] style:UIAlertActionStyleDestructive handler:^(__unused ICSDialogAction *action) {
             if (!ICSCoreForce(slot, useLocal)) {
                 [self alert:@"Sync busy" message:@"Wait for the current operation, then try again. No force operation was started."];
             }
         }]];
     }
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [sheet addAction:[ICSDialogAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = self.view;
     sheet.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
     [self presentViewController:sheet animated:YES completion:nil];
@@ -531,12 +538,12 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
         message=[message stringByAppendingFormat:@"\n\nThis choice includes progression AND the saved Continue run.\niPhone run %@\nSteam run %@",
             ICSShortHash(choice[@"local_run_sha256"]),ICSShortHash(choice[@"remote_run_sha256"])];
     }
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Choose Slot %u", slot] message:message preferredStyle:UIAlertControllerStyleActionSheet];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Use iPhone Save" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) { ICSCoreResolve(slot, true); }]];
+    ICSDialogController *sheet = [ICSDialogController alertControllerWithTitle:[NSString stringWithFormat:@"Choose Slot %u", slot] message:message preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[ICSDialogAction actionWithTitle:@"Use iPhone Save" style:UIAlertActionStyleDestructive handler:^(__unused ICSDialogAction *action) { ICSCoreResolve(slot, true); }]];
     if (remoteExists) {
-        [sheet addAction:[UIAlertAction actionWithTitle:@"Use Steam Save" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) { ICSCoreResolve(slot, false); }]];
+        [sheet addAction:[ICSDialogAction actionWithTitle:@"Use Steam Save" style:UIAlertActionStyleDestructive handler:^(__unused ICSDialogAction *action) { ICSCoreResolve(slot, false); }]];
     }
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [sheet addAction:[ICSDialogAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = self.view;
     sheet.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
     [self presentViewController:sheet animated:YES completion:nil];
@@ -562,15 +569,15 @@ static NSDictionary *ICSFindSlot(NSArray *items, NSUInteger slot) {
 }
 
 - (void)confirm:(NSString *)title message:(NSString *)message destructive:(BOOL)destructive action:(dispatch_block_t)action {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Continue" style:destructive ? UIAlertActionStyleDestructive : UIAlertActionStyleDefault handler:^(__unused UIAlertAction *selected) { action(); }]];
+    ICSDialogController *alert = [ICSDialogController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[ICSDialogAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[ICSDialogAction actionWithTitle:@"Continue" style:destructive ? UIAlertActionStyleDestructive : UIAlertActionStyleDefault handler:^(__unused ICSDialogAction *selected) { action(); }]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)alert:(NSString *)title message:(NSString *)message {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    ICSDialogController *alert = [ICSDialogController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[ICSDialogAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -694,9 +701,10 @@ static void ICSRefreshAttention(void) {
     UIButton *button = (UIButton *)[ICSTopController().view.window viewWithTag:0x495343];
     BOOL needsChoice = [phase isEqualToString:@"conflict"] || [phase isEqualToString:@"first_sync"];
     BOOL needsRestart = [phase isEqualToString:@"restart_required"];
-    BOOL error = [phase isEqualToString:@"error"];
+    NSString *achievementPhase = status[@"achievements_phase"];
+    BOOL error = [phase isEqualToString:@"error"] || [achievementPhase isEqualToString:@"error"];
     BOOL synchronized = [phase isEqualToString:@"idle"] && [status[@"authenticated"] boolValue]
-        && [status[@"cloud_synchronized"] boolValue];
+        && [status[@"cloud_synchronized"] boolValue] && [achievementPhase isEqualToString:@"verified"];
     button.layer.borderColor = (needsChoice || error) ? UIColor.systemRedColor.CGColor
         : (synchronized && !needsRestart) ? UIColor.systemGreenColor.CGColor : UIColor.systemOrangeColor.CGColor;
     button.accessibilityValue = (needsChoice || error) ? @"Needs attention"

@@ -27,6 +27,7 @@ jobs:
           if-no-files-found: error
           path: |
             dist/IsaacSteamSynciOS.dylib
+            dist/IsaacSteamSynciOS-PlayCover.dylib
             dist/IsaacSteamSynciOS-rootless.deb
             dist/SHA256SUMS
           retention-days: 14

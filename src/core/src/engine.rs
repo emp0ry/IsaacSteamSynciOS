@@ -82,6 +82,9 @@ pub struct StatusSnapshot {
     pub transfer_runs: bool,
     pub pc_mods: bool,
     pub cloud_synchronized: bool,
+    pub achievements_phase: String,
+    pub achievements_detail: String,
+    pub achievements_last_added: usize,
 }
 
 impl Default for StatusSnapshot {
@@ -106,6 +109,9 @@ impl Default for StatusSnapshot {
             transfer_runs: true,
             pc_mods: false,
             cloud_synchronized: false,
+            achievements_phase: "pending".to_owned(),
+            achievements_detail: "Automatically checked from stable saves in the menu".to_owned(),
+            achievements_last_added: 0,
         }
     }
 }
@@ -203,7 +209,57 @@ impl Engine {
             ),
         }
         engine.start_save_monitor();
+        engine.start_achievement_monitor();
         Ok(engine)
+    }
+
+    fn start_achievement_monitor(self: &Arc<Self>) {
+        let mut paths = Vec::new();
+        for slot in 1..=3 {
+            for relative in [
+                format!("Documents/Repentance/rep_persistentgamedata{slot}.dat"),
+                format!("Documents/rep_persistentgamedata{slot}.dat"),
+                format!("Documents/persistentgamedata{slot}.dat"),
+            ] {
+                paths.push(self.home.join(relative));
+            }
+        }
+        let weak = Arc::downgrade(self);
+        self.runtime.spawn(async move {
+            let start = Instant::now();
+            let mut watcher =
+                crate::save_monitor::Debouncer::new(crate::save_monitor::fingerprint(&paths));
+            let mut retry_after = 0;
+            let mut submitted = false;
+            // Offset from Cloud's poll. Both still share one operation lane.
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            loop {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let Some(engine) = weak.upgrade() else {
+                    break;
+                };
+                let seconds = start.elapsed().as_secs();
+                watcher.observe(crate::save_monitor::fingerprint(&paths), seconds);
+                let status = engine.snapshot();
+                if !crate::save_monitor::achievement_poll_allowed(
+                    engine.foreground.load(Ordering::Acquire),
+                    engine.menu_ready.load(Ordering::Acquire),
+                    engine.replacement_allowed.load(Ordering::Acquire),
+                    status.account_connected,
+                    &status.phase,
+                ) {
+                    continue;
+                }
+                if submitted && status.achievements_phase == "error" && seconds >= retry_after {
+                    watcher.retry();
+                }
+                if seconds >= retry_after && watcher.ready(seconds) && engine.sync_achievements() {
+                    watcher.submitted();
+                    retry_after = seconds + 60;
+                    submitted = true;
+                }
+            }
+        });
     }
 
     fn start_save_monitor(self: &Arc<Self>) {
@@ -631,29 +687,14 @@ impl Engine {
                 });
                 return Ok(());
             }
-            engine.run_sync(&trigger).await?;
+            let cloud_result = engine.run_sync(&trigger).await;
             if trigger == "manual" {
                 match engine.run_achievement_sync().await {
-                    Ok(added) => engine.report_achievement_result(added),
-                    Err(error) => {
-                        let message = safe_error(&error);
-                        engine.logger.log(
-                            "error",
-                            "achievements",
-                            &format!("save-derived achievement sync failed: {message}"),
-                        );
-                        engine.update_status(|status| {
-                            if status.phase == "idle" || status.phase == "syncing" {
-                                status.phase = "idle".to_owned();
-                                status.detail = format!(
-                                    "Steam Cloud synchronized; achievement sync failed: {message}"
-                                );
-                            }
-                        });
-                    }
+                    Ok(report) => engine.report_achievement_result(&report),
+                    Err(error) => engine.report_achievement_error(&error),
                 }
             }
-            Ok(())
+            cloud_result
         })
     }
 
@@ -661,12 +702,38 @@ impl Engine {
     /// lane as UFS. This prevents a second CM login from racing the Cloud
     /// session and potentially causing Steam to close either connection.
     pub fn sync_achievements(self: &Arc<Self>) -> bool {
-        self.spawn_operation("syncing", |engine| async move {
-            engine.ensure_session().await?;
-            let added = engine.run_achievement_sync().await?;
-            engine.report_achievement_result(added);
-            Ok(())
-        })
+        if !self.foreground.load(Ordering::Acquire)
+            || !self.menu_ready.load(Ordering::Acquire)
+            || self.replacement_allowed.load(Ordering::Acquire)
+        {
+            return false;
+        }
+        // Same CAS/session as Cloud, but never run UFS or overwrite its status,
+        // pending conflicts or first-sync decisions just to add achievements.
+        if self
+            .operation_active
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return false;
+        }
+        let engine = Arc::clone(self);
+        self.runtime.spawn(async move {
+            let result = async {
+                engine.ensure_session().await?;
+                engine.run_achievement_sync().await
+            }
+            .await;
+            match result {
+                Ok(report) => engine.report_achievement_result(&report),
+                Err(error) => {
+                    *engine.session.lock().await = None;
+                    engine.report_achievement_error(&error);
+                }
+            }
+            engine.operation_active.store(false, Ordering::Release);
+        });
+        true
     }
 
     pub fn disconnect(self: &Arc<Self>) -> bool {
@@ -1025,43 +1092,56 @@ impl Engine {
         Ok(())
     }
 
-    async fn run_achievement_sync(&self) -> Result<usize> {
+    async fn run_achievement_sync(&self) -> Result<achievements::AchievementSyncReport> {
         self.logger.log(
             "info",
             "achievements",
             "reading unlocks from native Isaac persistent saves",
         );
         self.update_status(|status| {
-            if status.phase == "idle" {
-                status.phase = "syncing".to_owned();
-                status.detail = "Comparing native save achievements with Steam…".to_owned();
-            }
+            status.achievements_phase = "syncing".to_owned();
+            status.achievements_detail = "Comparing native save achievements with Steam".to_owned();
         });
         let session_guard = self.session.lock().await;
         let session = session_guard
             .as_ref()
             .context("Steam session unavailable for achievement sync")?;
-        achievements::sync_from_local_saves(&self.home, session).await
+        let report = achievements::sync_from_local_saves(&self.home, session).await?;
+        // Private audit contains names/counts only, never credentials or saves.
+        atomic::write_bytes(
+            &self.support.join("state/achievement-sync-report.json"),
+            &serde_json::to_vec_pretty(&report)?,
+        )?;
+        Ok(report)
     }
 
-    fn report_achievement_result(&self, added: usize) {
+    fn report_achievement_result(&self, report: &achievements::AchievementSyncReport) {
+        let added = report.added;
         self.logger.log(
             "info",
             "achievements",
             &format!("save-derived achievement sync verified; added={added}; cleared=0"),
         );
         self.update_status(|status| {
-            if status.phase == "idle" || status.phase == "syncing" {
-                status.detail = if added == 0 {
-                    "Steam Cloud and save-derived achievements are synchronized".to_owned()
-                } else if added == 1 {
-                    "Steam Cloud synchronized; 1 missing save achievement added to Steam".to_owned()
-                } else {
-                    format!(
-                        "Steam Cloud synchronized; {added} missing save achievements added to Steam"
-                    )
-                };
-            }
+            status.achievements_phase = "verified".to_owned();
+            status.achievements_last_added = added;
+            status.achievements_detail = format!(
+                "{added} missing unlocks added; {} local; {} unlocked on Steam",
+                report.local_unlocked, report.steam_unlocked_after
+            );
+        });
+    }
+
+    fn report_achievement_error(&self, error: &anyhow::Error) {
+        let message = safe_error(error);
+        self.logger.log(
+            "error",
+            "achievements",
+            &format!("save-derived achievement sync failed: {message}"),
+        );
+        self.update_status(|status| {
+            status.achievements_phase = "error".to_owned();
+            status.achievements_detail = message;
         });
     }
 
